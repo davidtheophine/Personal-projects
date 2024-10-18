@@ -1,0 +1,38 @@
+{
+    "logged runs": [
+        {
+            "date": "2022-01-01",
+            "distance": 5,
+            "pace": 30,
+            "location": "Location 1",
+            "title": "Run 1",
+            "status": true
+        },
+        {
+            "date": "2022-01-02",
+            "distance": 3,
+            "pace": 20,
+            "location": "Location 2",
+            "title": "Run 2",
+            "status": false
+        }
+    ],
+    "challenge runs": [
+        {
+            "date": "2022-01-03",
+            "distance": 4,
+            "pace": 25,
+            "location": "Location 3",
+            "title": "Challenge Run 1",
+            "status": true
+        },
+        {
+            "date": "2022-01-04",
+            "distance": 6,
+            "pace": 35,
+            "location": "Location 4",
+            "title": "Challenge Run 2",
+            "status": false
+        }
+    ]
+}

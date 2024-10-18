@@ -1,0 +1,18 @@
+{
+    "logged runs": [{
+        "date": "2024-09-09",
+        "distance": 10,
+        "pace": 10,
+        "location": "van",
+        "title": "Sunday 10k",
+        "status": true
+    }],
+    "challenge runs": [{
+        "date": "2024-09-09",
+        "distance": 10,
+        "pace": 10,
+        "location": "van",
+        "title": "Sunday 10k",
+        "status": true
+    }]
+}
