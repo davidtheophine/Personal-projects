@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#0a0a0c" />
+    <title>Metal Card · brushed-metal WebGL prototype</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body, #root { margin: 0; height: 100%; width: 100%; }
+      html { background: #050506; }
+      body {
+        overflow: hidden;
+        background:
+          radial-gradient(120% 90% at 50% 32%, #1c1d24 0%, #0c0d11 55%, #050506 100%);
+        -webkit-tap-highlight-color: transparent;
+        touch-action: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
