@@ -46,9 +46,11 @@ export async function exportVideo(
   bgImage: HTMLImageElement | null,
   muted: boolean,
   onProgress?: (p: number) => void,
+  signal?: AbortSignal,
 ): Promise<Blob> {
   const clips = project.clips;
   if (clips.length === 0) throw new Error("Add a video before exporting.");
+  const cancelled = () => new DOMException("Export cancelled", "AbortError");
 
   const { width: W, height: H } = aspectDims(project.aspect);
   const canvas = document.createElement("canvas");
@@ -95,11 +97,16 @@ export async function exportVideo(
     .sort((a, b) => a.clip.start - b.clip.start);
 
   const renderBlack = (from: number, to: number) =>
-    new Promise<void>((resolve) => {
+    new Promise<void>((resolve, reject) => {
       let raf = 0;
       let last = performance.now();
       let t = from;
       const step = () => {
+        if (signal?.aborted) {
+          cancelAnimationFrame(raf);
+          reject(cancelled());
+          return;
+        }
         const now = performance.now();
         t += (now - last) / 1000;
         last = now;
@@ -116,33 +123,49 @@ export async function exportVideo(
       raf = requestAnimationFrame(step);
     });
 
-  let cursor = 0;
-  for (const { clip, el } of ordered) {
-    if (clip.start > cursor + 0.02) await renderBlack(cursor, clip.start);
-    await seekVideo(el, clip.in);
-    await el.play().catch(() => {});
-    await new Promise<void>((resolve) => {
-      let raf = 0;
-      const step = () => {
-        const gt = clip.start + (el.currentTime - clip.in);
-        renderFrame(ctx, project, el, gt, { bg: { image: bgImage } });
-        onProgress?.(clamp(gt / total, 0, 1));
-        if (el.currentTime >= clip.out - 0.001 || el.ended) {
-          el.pause();
-          cancelAnimationFrame(raf);
-          resolve();
-          return;
-        }
+  try {
+    let cursor = 0;
+    for (const { clip, el } of ordered) {
+      if (signal?.aborted) throw cancelled();
+      if (clip.start > cursor + 0.02) await renderBlack(cursor, clip.start);
+      const spd = clip.speed || 1;
+      await seekVideo(el, clip.in);
+      el.playbackRate = spd;
+      await el.play().catch(() => {});
+      await new Promise<void>((resolve, reject) => {
+        let raf = 0;
+        const step = () => {
+          if (signal?.aborted) {
+            el.pause();
+            cancelAnimationFrame(raf);
+            reject(cancelled());
+            return;
+          }
+          const gt = clip.start + (el.currentTime - clip.in) / spd;
+          renderFrame(ctx, project, el, gt, { bg: { image: bgImage } });
+          onProgress?.(clamp(gt / total, 0, 1));
+          if (el.currentTime >= clip.out - 0.001 || el.ended) {
+            el.pause();
+            cancelAnimationFrame(raf);
+            resolve();
+            return;
+          }
+          raf = requestAnimationFrame(step);
+        };
         raf = requestAnimationFrame(step);
-      };
-      raf = requestAnimationFrame(step);
-    });
-    cursor = clip.start + clipLen(clip);
+      });
+      cursor = clip.start + clipLen(clip);
+    }
+    recorder.stop();
+    if (audioCtx) await audioCtx.close().catch(() => {});
+    return await done;
+  } catch (e) {
+    // Cancelled or errored — tear everything down and don't hand back a blob.
+    els.forEach((el) => el.pause());
+    if (recorder.state !== "inactive") recorder.stop();
+    if (audioCtx) await audioCtx.close().catch(() => {});
+    throw e;
   }
-
-  recorder.stop();
-  if (audioCtx) await audioCtx.close().catch(() => {});
-  return done;
 }
 
 export function downloadBlob(blob: Blob, baseName: string): void {

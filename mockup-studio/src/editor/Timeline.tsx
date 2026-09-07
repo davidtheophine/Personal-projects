@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Film,
   Pause,
@@ -19,15 +19,14 @@ import {
   type TapEvent,
   type ZoomEvent,
 } from "@/state/project";
-import { activeAt, clipLen, clipStart, MIN_CLIP, totalDuration } from "@/state/clips";
+import { activeAt, clipLen, clipStart, MIN_CLIP, sourceLen, totalDuration } from "@/state/clips";
 import { clamp } from "@/render/geometry";
 import { Button } from "@/components/ui/button";
 
 const RULER_H = 26;
-const ZOOM_H = 46;
-const ROTATE_H = 46;
-const TAP_H = 46;
-const VIDEO_H = 58;
+const LANE_H = 30; // one effect lane (row)
+const VIDEO_H = 72;
+const PLAYHEAD_EXT = 14; // how far the playhead line extends past the tracks
 
 const fmt = (s: number): string => {
   if (!Number.isFinite(s)) return "0:00.00";
@@ -143,11 +142,41 @@ export function Timeline(props: TimelineProps) {
     !!splitInfo &&
     splitInfo.localTime > splitInfo.clip.in + MIN_CLIP &&
     splitInfo.localTime < splitInfo.clip.out - MIN_CLIP;
+  // Effects (zoom/rotate/tap) share one "Effects" track, split into lanes for
+  // layering. `laneCount` = used lanes + 1 spare to drag an effect into.
+  const { zooms, rotates, taps } = project;
+  const hasEffects = zooms.length + rotates.length + taps.length > 0;
+  const maxLane = Math.max(
+    0,
+    ...zooms.map((z) => z.lane ?? 0),
+    ...rotates.map((r) => r.lane ?? 0),
+    ...taps.map((t) => t.lane ?? 0),
+  );
+  const laneCount = hasEffects ? maxLane + 1 : 0;
+  // Dragging an effect reveals one extra "drop" lane to layer into; the count is
+  // frozen during the drag so the bottom-anchored timeline doesn't reflow.
+  const [effectDragging, setEffectDragging] = useState(false);
+  const dragMaxRef = useRef(0);
+  const displayLaneCount = effectDragging ? dragMaxRef.current + 2 : laneCount;
+
   const areaRef = useRef<HTMLDivElement>(null);
+  const effectsAreaRef = useRef<HTMLDivElement>(null);
   const addRef = useRef<HTMLInputElement>(null);
   const dragRef = useRef<Drag | null>(null);
-  const stateRef = useRef({ duration, span, clips, zooms: project.zooms, rotates: project.rotates });
-  stateRef.current = { duration, span, clips, zooms: project.zooms, rotates: project.rotates };
+  const stateRef = useRef({ duration, span, clips, zooms, rotates, maxLane });
+  stateRef.current = { duration, span, clips, zooms, rotates, maxLane };
+
+  // Which effect lane the cursor is over (allowing one lane past the frozen max).
+  const laneAt = (clientY: number): number => {
+    const el = effectsAreaRef.current;
+    if (!el) return 0;
+    const top = el.getBoundingClientRect().top;
+    return clamp(Math.floor((clientY - top) / LANE_H), 0, dragMaxRef.current + 1);
+  };
+  const beginEffectDrag = () => {
+    dragMaxRef.current = maxLane;
+    setEffectDragging(true);
+  };
 
   const pct = (t: number): number => (span > 0 ? (t / span) * 100 : 0);
 
@@ -181,18 +210,19 @@ export function Timeline(props: TimelineProps) {
       } else if (drag.kind === "clipTrimL") {
         const c = cl.find((cc) => cc.id === drag.id);
         if (c) {
-          const dsec = (e.clientX - drag.startX) / drag.pxPerSec;
+          // Drag is in timeline seconds; in/out are source seconds → scale by speed.
+          const dsec = ((e.clientX - drag.startX) / drag.pxPerSec) * (c.speed || 1);
           onTrimClip(drag.id, { in: clamp(drag.in0 + dsec, 0, c.out - MIN_CLIP) });
         }
       } else if (drag.kind === "clipTrimR") {
         const c = cl.find((cc) => cc.id === drag.id);
         if (c) {
-          const dsec = (e.clientX - drag.startX) / drag.pxPerSec;
+          const dsec = ((e.clientX - drag.startX) / drag.pxPerSec) * (c.speed || 1);
           onTrimClip(drag.id, { out: clamp(drag.out0 + dsec, c.in + MIN_CLIP, c.duration) });
         }
       } else if (drag.kind === "zoomMove") {
         const z = zooms.find((zz) => zz.id === drag.id);
-        if (z) onUpdateZoom(drag.id, { start: clamp(t - drag.grab, 0, dur - z.duration) });
+        if (z) onUpdateZoom(drag.id, { start: clamp(t - drag.grab, 0, dur - z.duration), lane: laneAt(e.clientY) });
       } else if (drag.kind === "zoomResizeR") {
         const z = zooms.find((zz) => zz.id === drag.id);
         if (z) onUpdateZoom(drag.id, { duration: clamp(t - z.start, 0.4, dur - z.start) });
@@ -205,7 +235,7 @@ export function Timeline(props: TimelineProps) {
         }
       } else if (drag.kind === "rotateMove") {
         const r = rotates.find((rr) => rr.id === drag.id);
-        if (r) onUpdateRotate(drag.id, { start: clamp(t - drag.grab, 0, dur - r.duration) });
+        if (r) onUpdateRotate(drag.id, { start: clamp(t - drag.grab, 0, dur - r.duration), lane: laneAt(e.clientY) });
       } else if (drag.kind === "rotateResizeR") {
         const r = rotates.find((rr) => rr.id === drag.id);
         if (r) onUpdateRotate(drag.id, { duration: clamp(t - r.start, 0.4, dur - r.start) });
@@ -217,11 +247,12 @@ export function Timeline(props: TimelineProps) {
           onUpdateRotate(drag.id, { start, duration: end - start });
         }
       } else if (drag.kind === "tapMove") {
-        onUpdateTap(drag.id, { time: clamp(t, 0, dur) });
+        onUpdateTap(drag.id, { time: clamp(t, 0, dur), lane: laneAt(e.clientY) });
       }
     };
     const up = () => {
       dragRef.current = null;
+      setEffectDragging(false);
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
@@ -297,18 +328,14 @@ export function Timeline(props: TimelineProps) {
       </div>
 
       {/* Tracks */}
-      <div className="flex select-none pb-3">
+      <div className="flex select-none pt-4 pb-5">
         <div className="w-32 shrink-0 pl-4 pr-2 text-[13px] text-white/70">
           <div style={{ height: RULER_H }} />
-          <div style={{ height: ZOOM_H }} className="flex items-center gap-1.5">
-            <Sparkles className="h-3.5 w-3.5 text-muted-foreground" /> Zooms
-          </div>
-          <div style={{ height: ROTATE_H }} className="flex items-center gap-1.5">
-            <RotateCw className="h-3.5 w-3.5 text-muted-foreground" /> Rotate
-          </div>
-          <div style={{ height: TAP_H }} className="flex items-center gap-1.5">
-            <Pointer className="h-3.5 w-3.5 text-white/60" /> Taps
-          </div>
+          {hasEffects && (
+            <div style={{ height: displayLaneCount * LANE_H }} className="flex items-start gap-1.5 pt-1.5">
+              <Sparkles className="h-3.5 w-3.5 text-muted-foreground" /> Effects
+            </div>
+          )}
           <div style={{ height: VIDEO_H }} className="flex items-center gap-1.5 truncate">
             📱 <span className="truncate">Video</span>
           </div>
@@ -317,6 +344,7 @@ export function Timeline(props: TimelineProps) {
         <div ref={areaRef} className="relative flex-1 pr-4">
           {/* Ruler */}
           <div
+            data-ruler
             style={{ height: RULER_H }}
             onPointerDown={scrubDown}
             className="relative cursor-pointer border-b border-white/10"
@@ -335,151 +363,168 @@ export function Timeline(props: TimelineProps) {
             ))}
           </div>
 
-          {/* Zooms track */}
-          <div
-            style={{ height: ZOOM_H }}
-            onPointerDown={(e) => {
-              onSelectZoom(null);
-              scrubDown(e);
-            }}
-            className="relative border-b border-white/5 bg-white/[0.02]"
-          >
-            {project.zooms.map((z) => {
-              const selected = z.id === selectedZoomId;
-              return (
+          {/* Effects track — zoom / rotate / tap share one track, split into
+              lanes for layering. Only shown once an effect exists. */}
+          {hasEffects && (
+            <div
+              ref={effectsAreaRef}
+              style={{ height: displayLaneCount * LANE_H }}
+              onPointerDown={(e) => {
+                onSelectZoom(null);
+                onSelectRotate(null);
+                onSelectTap(null);
+                scrubDown(e);
+              }}
+              className="relative"
+            >
+              {Array.from({ length: displayLaneCount }).map((_, ln) => (
                 <div
-                  key={z.id}
-                  onPointerDown={(e) => {
-                    e.stopPropagation();
-                    onSelectZoom(z.id);
-                    dragRef.current = { kind: "zoomMove", id: z.id, grab: timeAt(e.clientX) - z.start };
-                  }}
-                  className={`absolute top-1.5 bottom-1.5 flex cursor-grab items-center overflow-hidden rounded-md border px-3 text-[10px] backdrop-blur ${
-                    selected
-                      ? "border-primary bg-primary/20 text-foreground ring-1 ring-primary"
-                      : "border-border bg-white/10 text-white/80 hover:bg-white/[0.14]"
-                  }`}
-                  style={{ left: `${pct(z.start)}%`, width: `${pct(z.duration)}%` }}
-                >
-                  <span className="pointer-events-none truncate">{z.scale.toFixed(1)}×</span>
-                  <div
-                    onPointerDown={(e) => {
-                      e.stopPropagation();
-                      onSelectZoom(z.id);
-                      dragRef.current = { kind: "zoomResizeL", id: z.id };
-                    }}
-                    className="absolute left-0 top-0 flex h-full w-2.5 cursor-ew-resize items-center justify-center"
-                  >
-                    <div className="h-4 w-0.5 rounded bg-white/60" />
-                  </div>
-                  <div
-                    onPointerDown={(e) => {
-                      e.stopPropagation();
-                      onSelectZoom(z.id);
-                      dragRef.current = { kind: "zoomResizeR", id: z.id };
-                    }}
-                    className="absolute right-0 top-0 flex h-full w-2.5 cursor-ew-resize items-center justify-center"
-                  >
-                    <div className="h-4 w-0.5 rounded bg-white/60" />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Rotate track */}
-          <div
-            style={{ height: ROTATE_H }}
-            onPointerDown={(e) => {
-              onSelectRotate(null);
-              scrubDown(e);
-            }}
-            className="relative border-b border-white/5 bg-white/[0.02]"
-          >
-            {project.rotates.map((r) => {
-              const selected = r.id === selectedRotateId;
-              return (
-                <div
-                  key={r.id}
-                  onPointerDown={(e) => {
-                    e.stopPropagation();
-                    onSelectRotate(r.id);
-                    dragRef.current = {
-                      kind: "rotateMove",
-                      id: r.id,
-                      grab: timeAt(e.clientX) - r.start,
-                    };
-                  }}
-                  className={`absolute top-1.5 bottom-1.5 flex cursor-grab items-center overflow-hidden rounded-md border px-3 text-[10px] backdrop-blur ${
-                    selected
-                      ? "border-primary bg-primary/20 text-foreground ring-1 ring-primary"
-                      : "border-border bg-white/10 text-white/80 hover:bg-white/[0.14]"
-                  }`}
-                  style={{ left: `${pct(r.start)}%`, width: `${pct(r.duration)}%` }}
-                >
-                  <span className="pointer-events-none truncate">{Math.round(r.angle)}°</span>
-                  <div
-                    onPointerDown={(e) => {
-                      e.stopPropagation();
-                      onSelectRotate(r.id);
-                      dragRef.current = { kind: "rotateResizeL", id: r.id };
-                    }}
-                    className="absolute left-0 top-0 flex h-full w-2.5 cursor-ew-resize items-center justify-center"
-                  >
-                    <div className="h-4 w-0.5 rounded bg-white/60" />
-                  </div>
-                  <div
-                    onPointerDown={(e) => {
-                      e.stopPropagation();
-                      onSelectRotate(r.id);
-                      dragRef.current = { kind: "rotateResizeR", id: r.id };
-                    }}
-                    className="absolute right-0 top-0 flex h-full w-2.5 cursor-ew-resize items-center justify-center"
-                  >
-                    <div className="h-4 w-0.5 rounded bg-white/60" />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Taps track */}
-          <div
-            style={{ height: TAP_H }}
-            onPointerDown={scrubDown}
-            className="relative border-b border-white/5 bg-white/[0.02]"
-          >
-            {project.taps.map((tap) => (
-              <div
-                key={tap.id}
-                onPointerDown={(e) => {
-                  e.stopPropagation();
-                  onSelectTap(tap.id);
-                  dragRef.current = { kind: "tapMove", id: tap.id };
-                }}
-                className="group absolute top-1/2 -translate-x-1/2 -translate-y-1/2"
-                style={{ left: `${pct(tap.time)}%` }}
-              >
-                <div
-                  className={`h-4 w-4 rotate-45 rounded-[3px] border shadow ${
-                    tap.id === selectedTapId
-                      ? "border-primary bg-primary ring-2 ring-primary/40"
-                      : "border-white bg-neutral-200"
+                  key={ln}
+                  style={{ top: ln * LANE_H, height: LANE_H }}
+                  className={`absolute inset-x-0 ${
+                    effectDragging && ln === displayLaneCount - 1
+                      ? "m-1 rounded border border-dashed border-white/15"
+                      : "border-b border-white/5 bg-white/[0.02]"
                   }`}
                 />
-                <button
-                  onClick={(e) => {
+              ))}
+
+              {zooms.map((z) => {
+                const selected = z.id === selectedZoomId;
+                return (
+                  <div
+                    key={z.id}
+                    data-effect="zoom"
+                    onPointerDown={(e) => {
+                      e.stopPropagation();
+                      onSelectZoom(z.id);
+                      beginEffectDrag();
+                      dragRef.current = { kind: "zoomMove", id: z.id, grab: timeAt(e.clientX) - z.start };
+                    }}
+                    className={`flex cursor-grab items-center gap-1 overflow-hidden rounded-md border px-2 text-[10px] backdrop-blur ${
+                      selected
+                        ? "z-10 border-primary bg-primary/20 text-foreground ring-1 ring-primary"
+                        : "border-border bg-white/10 text-white/80 hover:bg-white/[0.14]"
+                    }`}
+                    style={{
+                      position: "absolute",
+                      left: `${pct(z.start)}%`,
+                      width: `${pct(z.duration)}%`,
+                      top: (z.lane ?? 0) * LANE_H + 3,
+                      height: LANE_H - 6,
+                    }}
+                  >
+                    <Sparkles className="h-3 w-3 shrink-0 opacity-70" />
+                    <span className="pointer-events-none truncate">{z.scale.toFixed(1)}×</span>
+                    <div
+                      onPointerDown={(e) => {
+                        e.stopPropagation();
+                        onSelectZoom(z.id);
+                        dragRef.current = { kind: "zoomResizeL", id: z.id };
+                      }}
+                      className="absolute left-0 top-0 flex h-full w-2.5 cursor-ew-resize items-center justify-center"
+                    >
+                      <div className="h-3 w-0.5 rounded bg-white/60" />
+                    </div>
+                    <div
+                      onPointerDown={(e) => {
+                        e.stopPropagation();
+                        onSelectZoom(z.id);
+                        dragRef.current = { kind: "zoomResizeR", id: z.id };
+                      }}
+                      className="absolute right-0 top-0 flex h-full w-2.5 cursor-ew-resize items-center justify-center"
+                    >
+                      <div className="h-3 w-0.5 rounded bg-white/60" />
+                    </div>
+                  </div>
+                );
+              })}
+
+              {rotates.map((r) => {
+                const selected = r.id === selectedRotateId;
+                return (
+                  <div
+                    key={r.id}
+                    data-effect="rotate"
+                    onPointerDown={(e) => {
+                      e.stopPropagation();
+                      onSelectRotate(r.id);
+                      beginEffectDrag();
+                      dragRef.current = { kind: "rotateMove", id: r.id, grab: timeAt(e.clientX) - r.start };
+                    }}
+                    className={`flex cursor-grab items-center gap-1 overflow-hidden rounded-md border px-2 text-[10px] backdrop-blur ${
+                      selected
+                        ? "z-10 border-primary bg-primary/20 text-foreground ring-1 ring-primary"
+                        : "border-border bg-white/10 text-white/80 hover:bg-white/[0.14]"
+                    }`}
+                    style={{
+                      position: "absolute",
+                      left: `${pct(r.start)}%`,
+                      width: `${pct(r.duration)}%`,
+                      top: (r.lane ?? 0) * LANE_H + 3,
+                      height: LANE_H - 6,
+                    }}
+                  >
+                    <RotateCw className="h-3 w-3 shrink-0 opacity-70" />
+                    <span className="pointer-events-none truncate">{Math.round(r.angle)}°</span>
+                    <div
+                      onPointerDown={(e) => {
+                        e.stopPropagation();
+                        onSelectRotate(r.id);
+                        dragRef.current = { kind: "rotateResizeL", id: r.id };
+                      }}
+                      className="absolute left-0 top-0 flex h-full w-2.5 cursor-ew-resize items-center justify-center"
+                    >
+                      <div className="h-3 w-0.5 rounded bg-white/60" />
+                    </div>
+                    <div
+                      onPointerDown={(e) => {
+                        e.stopPropagation();
+                        onSelectRotate(r.id);
+                        dragRef.current = { kind: "rotateResizeR", id: r.id };
+                      }}
+                      className="absolute right-0 top-0 flex h-full w-2.5 cursor-ew-resize items-center justify-center"
+                    >
+                      <div className="h-3 w-0.5 rounded bg-white/60" />
+                    </div>
+                  </div>
+                );
+              })}
+
+              {taps.map((tap) => (
+                <div
+                  key={tap.id}
+                  data-effect="tap"
+                  onPointerDown={(e) => {
                     e.stopPropagation();
-                    onRemoveTap(tap.id);
+                    onSelectTap(tap.id);
+                    beginEffectDrag();
+                    dragRef.current = { kind: "tapMove", id: tap.id };
                   }}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  className="absolute -right-2 -top-2 hidden rounded bg-black/50 p-0.5 group-hover:block"
+                  className="group absolute z-20 -translate-x-1/2 -translate-y-1/2"
+                  style={{ left: `${pct(tap.time)}%`, top: (tap.lane ?? 0) * LANE_H + LANE_H / 2 }}
                 >
-                  <X className="h-3 w-3" />
-                </button>
-              </div>
-            ))}
-          </div>
+                  <div
+                    className={`h-4 w-4 rotate-45 rounded-[3px] border shadow ${
+                      tap.id === selectedTapId
+                        ? "border-primary bg-primary ring-2 ring-primary/40"
+                        : "border-white bg-neutral-200"
+                    }`}
+                  />
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRemoveTap(tap.id);
+                    }}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    className="absolute -right-2 -top-2 hidden rounded bg-black/50 p-0.5 group-hover:block"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* Video track — one bar per clip, trim handles remove footage */}
           <div
@@ -519,19 +564,15 @@ export function Timeline(props: TimelineProps) {
                   <div
                     className="pointer-events-none absolute inset-y-0 flex"
                     style={{
-                      left: `${-(clip.in / len) * 100}%`,
-                      width: `${(clip.duration / len) * 100}%`,
+                      left: `${-(clip.in / sourceLen(clip)) * 100}%`,
+                      width: `${(clip.duration / sourceLen(clip)) * 100}%`,
                     }}
                   >
                     {thumbs.map((src, ti) => (
                       <div
                         key={ti}
-                        className="h-full flex-1"
-                        style={{
-                          backgroundImage: `url(${src})`,
-                          backgroundSize: "cover",
-                          backgroundPosition: "center",
-                        }}
+                        className="h-full flex-1 bg-cover bg-center"
+                        style={{ backgroundImage: `url(${src})` }}
                       />
                     ))}
                   </div>
@@ -582,18 +623,28 @@ export function Timeline(props: TimelineProps) {
             })}
           </div>
 
-          {/* Playhead */}
+          {/* Playhead — the line extends past the tracks top & bottom, and those
+              extensions (+ the ruler + the handle) are grabbable to scrub. */}
           <div
             className="pointer-events-none absolute z-20"
-            style={{ left: `${pct(currentTime)}%`, top: RULER_H, bottom: 0 }}
+            style={{ left: `${pct(currentTime)}%`, top: -PLAYHEAD_EXT, bottom: -PLAYHEAD_EXT }}
           >
             <div className="h-full w-px bg-white" />
+            {/* grab above the ruler (extension + ruler — no blocks there) */}
             <div
-              onPointerDown={(e) => {
-                e.stopPropagation();
-                dragRef.current = { kind: "playhead" };
-              }}
-              className="pointer-events-auto absolute -top-2 -left-[7px] h-3.5 w-3.5 cursor-ew-resize rounded-full border-2 border-card bg-white"
+              onPointerDown={scrubDown}
+              style={{ height: PLAYHEAD_EXT + RULER_H }}
+              className="pointer-events-auto absolute -left-1.5 top-0 w-3 cursor-ew-resize"
+            />
+            {/* grab below the tracks (bottom extension) */}
+            <div
+              onPointerDown={scrubDown}
+              style={{ height: PLAYHEAD_EXT }}
+              className="pointer-events-auto absolute -left-1.5 bottom-0 w-3 cursor-ew-resize"
+            />
+            <div
+              onPointerDown={scrubDown}
+              className="pointer-events-auto absolute -top-1 -left-[7px] h-3.5 w-3.5 cursor-ew-resize rounded-full border-2 border-card bg-white"
             />
           </div>
         </div>

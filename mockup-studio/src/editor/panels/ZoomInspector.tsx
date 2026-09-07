@@ -85,35 +85,36 @@ export function ZoomInspector({
         label="Size"
         value={zoom.scale}
         min={1.1}
-        max={2.5}
+        max={5}
         step={0.05}
         onChange={(v) => onUpdate({ scale: v })}
         unit="×"
       />
 
       <div className="space-y-2">
-        <span className="text-[13px] text-muted-foreground">Phone position</span>
+        <span className="text-[13px] text-muted-foreground">Zoom into</span>
         <PositionGrid x={zoom.x} y={zoom.y} onPick={(x, y) => onUpdate({ x, y })} />
         <p className="text-[11px] text-muted-foreground">
-          Or drag the phone in the preview — the background stays put.
+          Pick the region to zoom into, or drag on the preview to pan. Only the
+          phone zooms — the background stays put.
         </p>
       </div>
 
       <SliderRow
-        label="Position X"
+        label="Pan X"
         value={zoom.x}
-        min={-0.4}
-        max={0.4}
+        min={-0.5}
+        max={0.5}
         step={0.005}
         onChange={(v) => onUpdate({ x: v })}
         unit="%"
         mult={100}
       />
       <SliderRow
-        label="Position Y"
+        label="Pan Y"
         value={zoom.y}
-        min={-0.4}
-        max={0.4}
+        min={-0.5}
+        max={0.5}
         step={0.005}
         onChange={(v) => onUpdate({ y: v })}
         unit="%"

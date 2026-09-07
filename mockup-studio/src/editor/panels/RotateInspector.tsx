@@ -27,7 +27,25 @@ export function RotateInspector({
       }
     >
       <SliderRow
-        label="Angle"
+        label="Tilt X"
+        value={rotate.rotateX ?? 0}
+        min={-60}
+        max={60}
+        step={1}
+        onChange={(v) => onUpdate({ rotateX: v })}
+        unit="°"
+      />
+      <SliderRow
+        label="Tilt Y"
+        value={rotate.rotateY ?? 0}
+        min={-60}
+        max={60}
+        step={1}
+        onChange={(v) => onUpdate({ rotateY: v })}
+        unit="°"
+      />
+      <SliderRow
+        label="Roll"
         value={rotate.angle}
         min={-180}
         max={180}
@@ -35,6 +53,9 @@ export function RotateInspector({
         onChange={(v) => onUpdate({ angle: v })}
         unit="°"
       />
+      <p className="text-[11px] text-muted-foreground">
+        Or grab the phone in the preview to tilt it in 3D.
+      </p>
 
       <div className="space-y-2.5">
         <span className="text-[13px] text-muted-foreground">Animation</span>

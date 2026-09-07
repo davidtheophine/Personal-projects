@@ -4,9 +4,14 @@ import { clamp } from "@/render/geometry";
 /** Minimum kept length for a clip, in seconds. */
 export const MIN_CLIP = 0.1;
 
-/** Kept length of a clip (source out − in). */
-export function clipLen(c: VideoClip): number {
+/** Source-time length actually kept (out − in), before the speed multiplier. */
+export function sourceLen(c: VideoClip): number {
   return Math.max(0, c.out - c.in);
+}
+
+/** How much room the clip occupies on the output timeline (source ÷ speed). */
+export function clipLen(c: VideoClip): number {
+  return sourceLen(c) / (c.speed || 1);
 }
 
 /**
@@ -42,7 +47,9 @@ export function activeAt(clips: VideoClip[], t: number): ActiveClip | null {
     const c = clips[i];
     const len = clipLen(c);
     if (t >= c.start && t < c.start + len) {
-      found = { clip: c, index: i, localTime: c.in + clamp(t - c.start, 0, len) };
+      // Timeline elapsed → source elapsed scales by the speed multiplier.
+      const local = c.in + clamp((t - c.start) * (c.speed || 1), 0, sourceLen(c));
+      found = { clip: c, index: i, localTime: local };
     }
   }
   return found;

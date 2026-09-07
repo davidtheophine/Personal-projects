@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Download } from "lucide-react";
+import { Download, RotateCcw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DEFAULT_ROTATE,
@@ -23,6 +23,16 @@ import { clamp } from "@/render/geometry";
 import { makeId } from "@/lib/id";
 import { extractThumbnails, loadImageFile, loadVideoFile, loadVideoUrl } from "@/lib/media";
 import { downloadBlob, exportVideo } from "@/export/export-webm";
+import {
+  clearPersisted,
+  loadBgBlob,
+  loadMediaBlob,
+  loadProject,
+  persistBgBlob,
+  persistMediaBlob,
+  persistProject,
+  pruneMedia,
+} from "@/state/persist";
 import { Preview } from "@/editor/Preview";
 import { Timeline } from "@/editor/Timeline";
 import { CanvasPanel } from "@/editor/panels/CanvasPanel";
@@ -32,6 +42,7 @@ import { TuningPanel } from "@/editor/panels/TuningPanel";
 import { ZoomInspector } from "@/editor/panels/ZoomInspector";
 import { RotateInspector } from "@/editor/panels/RotateInspector";
 import { TapInspector } from "@/editor/panels/TapInspector";
+import { ClipInspector } from "@/editor/panels/ClipInspector";
 
 export function App() {
   const [project, setProject] = useState<Project>(defaultProject);
@@ -48,6 +59,7 @@ export function App() {
   const [selectedTapId, setSelectedTapId] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [exportPct, setExportPct] = useState(0);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   // Refs mirror state so callbacks can read the latest without re-subscribing.
   const clipsRef = useRef(project.clips);
@@ -56,6 +68,8 @@ export function App() {
   videoElsRef.current = videoEls;
   const mutedRef = useRef(muted);
   mutedRef.current = muted;
+  const exportAbortRef = useRef<AbortController | null>(null);
+  const hydratedRef = useRef(false);
 
   // Undo history (project snapshots, coalesced so a slider drag = one step).
   const undoRef = useRef<Project[]>([]);
@@ -84,6 +98,105 @@ export function App() {
     setTapPlacing(false);
   }, []);
 
+  // Restore a saved session (project + media blobs) on first mount.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const saved = await loadProject();
+      if (cancelled) return;
+      if (!saved || !saved.clips || saved.clips.length === 0) {
+        hydratedRef.current = true;
+        return;
+      }
+      const urlByMedia: Record<string, string> = {};
+      const els: Record<string, HTMLVideoElement> = {};
+      for (const clip of saved.clips) {
+        let url = urlByMedia[clip.mediaId];
+        if (!url) {
+          const blob = await loadMediaBlob(clip.mediaId);
+          if (blob) {
+            url = URL.createObjectURL(blob);
+            urlByMedia[clip.mediaId] = url;
+          }
+        }
+        if (!url) continue;
+        clip.url = url;
+        try {
+          els[clip.id] = await loadVideoUrl(url, mutedRef.current);
+        } catch {
+          /* a clip whose media won't decode is dropped below */
+        }
+      }
+      let bgImg: HTMLImageElement | null = null;
+      if (saved.background?.type === "image" && saved.background.image?.src) {
+        const bgBlob = await loadBgBlob();
+        if (bgBlob) {
+          const url = URL.createObjectURL(bgBlob);
+          saved.background.image.src = url;
+          bgImg = await new Promise<HTMLImageElement | null>((resolve) => {
+            const im = new Image();
+            im.onload = () => resolve(im);
+            im.onerror = () => resolve(null);
+            im.src = url;
+          });
+        }
+      }
+      if (cancelled) return;
+      saved.clips = saved.clips.filter((c) => els[c.id]);
+      hydratedRef.current = true;
+      prevProjectRef.current = saved;
+      setProject(saved);
+      setVideoEls(els);
+      setBgImage(bgImg);
+      for (const clip of saved.clips) {
+        const el = els[clip.id];
+        if (!el) continue;
+        void extractThumbnails(el, 22).then((thumbs) => {
+          el.currentTime = clip.in;
+          if (!cancelled) setThumbnails((prev) => ({ ...prev, [clip.id]: thumbs }));
+        });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Auto-save the project (debounced) after hydration; prune orphaned media.
+  useEffect(() => {
+    if (!hydratedRef.current) return;
+    const id = setTimeout(() => {
+      void persistProject(project);
+      void pruneMedia(project.clips.map((c) => c.mediaId));
+    }, 400);
+    return () => clearTimeout(id);
+  }, [project]);
+
+  const doReset = async () => {
+    Object.values(videoElsRef.current).forEach((el) => el.pause());
+    clipsRef.current.forEach((c) => {
+      if (c.url.startsWith("blob:")) URL.revokeObjectURL(c.url);
+    });
+    const bgSrc = project.background.image.src;
+    if (bgSrc && bgSrc.startsWith("blob:")) URL.revokeObjectURL(bgSrc);
+    await clearPersisted();
+    const fresh = defaultProject();
+    prevProjectRef.current = fresh;
+    undoRef.current = [];
+    setProject(fresh);
+    setVideoEls({});
+    setThumbnails({});
+    setBgImage(null);
+    setCurrentTime(0);
+    setPlaying(false);
+    setTapPlacing(false);
+    setSelectedZoomId(null);
+    setSelectedRotateId(null);
+    setSelectedClipId(null);
+    setSelectedTapId(null);
+    setShowResetConfirm(false);
+  };
+
   const setBackground = (patch: Partial<BackgroundState>) =>
     setProject((p) => ({ ...p, background: { ...p.background, ...patch } }));
   const setImage = (patch: Partial<ImageBackground>) =>
@@ -107,8 +220,10 @@ export function App() {
     const { meta, el } = await loadVideoFile(file);
     el.muted = mutedRef.current;
     const id = makeId();
+    const mediaId = makeId();
     const clip: VideoClip = {
       id,
+      mediaId,
       url: meta.url,
       name: meta.name,
       width: meta.width,
@@ -118,18 +233,21 @@ export function App() {
       in: 0,
       out: meta.duration,
       start: totalDuration(clipsRef.current),
+      speed: 1,
     };
+    void persistMediaBlob(mediaId, file);
     setPlaying(false);
     setTapPlacing(false);
     setVideoEls((m) => ({ ...m, [id]: el }));
     setProject((p) => ({ ...p, clips: [...p.clips, clip] }));
-    const thumbs = await extractThumbnails(el, 16);
+    const thumbs = await extractThumbnails(el, 22);
     el.currentTime = 0;
     setThumbnails((t) => ({ ...t, [id]: thumbs }));
   }, []);
 
   const importBgImage = useCallback(async (file: File) => {
     const { img, url, name } = await loadImageFile(file);
+    void persistBgBlob(file);
     setBgImage(img);
     setProject((p) => ({
       ...p,
@@ -144,17 +262,24 @@ export function App() {
   const doExport = async () => {
     if (project.clips.length === 0 || exporting) return;
     setPlaying(false);
+    const controller = new AbortController();
+    exportAbortRef.current = controller;
     setExporting(true);
     setExportPct(0);
     try {
-      const blob = await exportVideo(project, bgImage, muted, (p) => setExportPct(p));
+      const blob = await exportVideo(project, bgImage, muted, (p) => setExportPct(p), controller.signal);
       const base = (project.clips[0]?.name ?? "mockup").replace(/\.[^.]+$/, "");
       downloadBlob(blob, `${base}-mockup`);
+    } catch (e) {
+      // Cancelling is expected; let anything else propagate to Sentry.
+      if (!(e instanceof DOMException && e.name === "AbortError")) throw e;
     } finally {
       setExporting(false);
       setExportPct(0);
+      exportAbortRef.current = null;
     }
   };
+  const cancelExport = () => exportAbortRef.current?.abort();
 
   const togglePlay = useCallback(() => {
     if (clipsRef.current.length === 0) return;
@@ -221,7 +346,24 @@ export function App() {
     // Keep the element, thumbnails and object URL alive: split segments share a
     // source URL (revoking it would break the sibling), and undo needs them.
     videoElsRef.current[id]?.pause();
-    setProject((p) => ({ ...p, clips: p.clips.filter((c) => c.id !== id) }));
+    setProject((p) => {
+      const removed = p.clips.find((c) => c.id === id);
+      if (!removed) return p;
+      const rest = p.clips.filter((c) => c.id !== id);
+      // Ripple: pull every clip at/after the removed clip's position left so the
+      // next one lands exactly where the removed clip started. This closes the
+      // whole hole (including the case where the removed clip was at the start —
+      // the rest slide all the way to 0), while preserving gaps further along.
+      const afterStarts = rest.map((c) => c.start).filter((s) => s >= removed.start - 0.001);
+      if (afterStarts.length === 0) return { ...p, clips: rest };
+      const delta = Math.min(...afterStarts) - removed.start;
+      return {
+        ...p,
+        clips: rest.map((c) =>
+          c.start >= removed.start - 0.001 ? { ...c, start: Math.max(0, c.start - delta) } : c,
+        ),
+      };
+    });
     setSelectedClipId((cur) => (cur === id ? null : cur));
   }, []);
 
@@ -271,6 +413,7 @@ export function App() {
         x: 0,
         y: 0,
         ease: DEFAULT_ZOOM.ease,
+        lane: 0,
       };
       return { ...p, zooms: [...p.zooms, zoom] };
     });
@@ -315,7 +458,10 @@ export function App() {
         start,
         duration,
         angle: DEFAULT_ROTATE.angle,
+        rotateX: DEFAULT_ROTATE.rotateX,
+        rotateY: DEFAULT_ROTATE.rotateY,
         ease: DEFAULT_ROTATE.ease,
+        lane: 0,
       };
       return { ...p, rotates: [...p.rotates, rotate] };
     });
@@ -348,6 +494,16 @@ export function App() {
       setSelectedTapId(null);
     }
   };
+  const updateSelectedClip = (patch: Partial<VideoClip>) => {
+    if (selectedClipId)
+      setProject((p) => ({
+        ...p,
+        clips: p.clips.map((c) => (c.id === selectedClipId ? { ...c, ...patch } : c)),
+      }));
+  };
+  const removeSelectedClip = () => {
+    if (selectedClipId) removeClip(selectedClipId);
+  };
 
   const selectTap = (id: string | null) => {
     setSelectedTapId(id);
@@ -371,7 +527,10 @@ export function App() {
     const id = makeId();
     setProject((p) => ({
       ...p,
-      taps: [...p.taps, { id, time: currentTime, x, y, duration: DEFAULT_TAP.duration, size: DEFAULT_TAP.size }],
+      taps: [
+        ...p.taps,
+        { id, time: currentTime, x, y, duration: DEFAULT_TAP.duration, size: DEFAULT_TAP.size, lane: 0 },
+      ],
     }));
     setTapPlacing(false);
     selectTap(id);
@@ -380,8 +539,12 @@ export function App() {
   const onRepositionZoom = (x: number, y: number) => {
     if (selectedZoomId) updateZoom(selectedZoomId, { x, y });
   };
-  const onRotateSelected = (angle: number) => {
-    if (selectedRotateId) updateRotate(selectedRotateId, { angle: clamp(angle, -180, 180) });
+  const onRotateSelected = (rotateX: number, rotateY: number) => {
+    if (selectedRotateId)
+      updateRotate(selectedRotateId, {
+        rotateX: clamp(rotateX, -60, 60),
+        rotateY: clamp(rotateY, -60, 60),
+      });
   };
   const onMoveTap = (x: number, y: number) => {
     if (selectedTapId) updateTap(selectedTapId, { x, y });
@@ -444,7 +607,7 @@ export function App() {
     selectedZoom &&
     currentTime >= selectedZoom.start &&
     currentTime <= selectedZoom.start + selectedZoom.duration
-      ? { x: selectedZoom.x, y: selectedZoom.y }
+      ? { x: selectedZoom.x, y: selectedZoom.y, scale: selectedZoom.scale }
       : null;
   const selectedRotate = selectedRotateId
     ? (project.rotates.find((r) => r.id === selectedRotateId) ?? null)
@@ -452,11 +615,14 @@ export function App() {
   const selectedTap = selectedTapId
     ? (project.taps.find((t) => t.id === selectedTapId) ?? null)
     : null;
+  const selectedClip = selectedClipId
+    ? (project.clips.find((c) => c.id === selectedClipId) ?? null)
+    : null;
   const rotatePan =
     selectedRotate &&
     currentTime >= selectedRotate.start &&
     currentTime <= selectedRotate.start + selectedRotate.duration
-      ? selectedRotate.angle
+      ? { x: selectedRotate.rotateX, y: selectedRotate.rotateY }
       : null;
   const selectedTapPos = selectedTap ? { x: selectedTap.x, y: selectedTap.y } : null;
   const clipsDuration = totalDuration(project.clips);
@@ -470,15 +636,32 @@ export function App() {
           <span className="text-sm font-semibold">Mockup Studio</span>
           <span className="text-xs text-muted-foreground">iPhone screen-recording editor</span>
         </div>
-        <Button
-          variant="secondary"
-          size="sm"
-          disabled={project.clips.length === 0 || exporting}
-          onClick={doExport}
-        >
-          <Download className="h-4 w-4" />
-          {exporting ? `Exporting ${Math.round(exportPct * 100)}%` : "Export"}
-        </Button>
+        <div className="flex items-center gap-1">
+          {project.clips.length > 0 && !exporting && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowResetConfirm(true)}
+              title="Delete this session and start over"
+            >
+              <RotateCcw className="h-4 w-4" /> Start over
+            </Button>
+          )}
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={project.clips.length === 0 || exporting}
+            onClick={doExport}
+          >
+            <Download className="h-4 w-4" />
+            {exporting ? `Exporting ${Math.round(exportPct * 100)}%` : "Export"}
+          </Button>
+          {exporting && (
+            <Button variant="ghost" size="icon" onClick={cancelExport} title="Cancel export">
+              <X className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
       </header>
 
       <div className="flex flex-1 overflow-hidden">
@@ -525,6 +708,14 @@ export function App() {
               onUpdate={updateSelectedTap}
               onRemove={removeSelectedTap}
               onClose={() => setSelectedTapId(null)}
+            />
+          )}
+          {selectedClip && (
+            <ClipInspector
+              clip={selectedClip}
+              onUpdate={updateSelectedClip}
+              onRemove={removeSelectedClip}
+              onClose={() => setSelectedClipId(null)}
             />
           )}
           <CanvasPanel aspect={project.aspect} onChange={setAspect} />
@@ -575,6 +766,34 @@ export function App() {
           onUpdateTap={updateTap}
           onRemoveTap={removeTap}
         />
+      )}
+
+      {showResetConfirm && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          onClick={() => setShowResetConfirm(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-xl border border-border bg-card p-5 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-sm font-semibold">Start over?</h2>
+            <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground">
+              This deletes your current project and its saved progress in this browser — including
+              the videos and images you imported. This can’t be undone.
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <Button variant="ghost" size="sm" onClick={() => setShowResetConfirm(false)}>
+                Cancel
+              </Button>
+              <Button variant="destructive" size="sm" onClick={doReset}>
+                Delete &amp; start over
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
