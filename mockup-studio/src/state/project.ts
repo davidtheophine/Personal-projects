@@ -30,6 +30,7 @@ export interface VideoMeta {
  */
 export interface VideoClip {
   id: string;
+  mediaId: string; // source identifier; split segments share one (and one stored blob)
   url: string;
   name: string;
   width: number;
@@ -39,6 +40,7 @@ export interface VideoClip {
   in: number; // source-time trim in
   out: number; // source-time trim out
   start: number; // absolute position on the output timeline (seconds)
+  speed: number; // playback-rate multiplier (1 = normal, 2 = twice as fast)
 }
 
 export type BackgroundType = "mesh" | "gradient" | "solid" | "image" | "none";
@@ -110,16 +112,20 @@ export function isZoomEase(v: string): v is ZoomEase {
 export type ZoomAnchorX = "left" | "center" | "right";
 export type ZoomAnchorY = "top" | "center" | "bottom";
 
-/** Phone-offset presets (canvas fractions): +x moves the phone right, +y down. */
+/**
+ * Zoom-focus presets — the fraction from the phone's centre that the zoom
+ * centres on. -x/-y focus toward the left/top, +x/+y toward the right/bottom.
+ * "top" therefore zooms INTO the top of the phone, not moves the phone up.
+ */
 export const ZOOM_ANCHOR_X: Record<ZoomAnchorX, number> = {
-  left: -0.16,
+  left: -0.33,
   center: 0,
-  right: 0.16,
+  right: 0.33,
 };
 export const ZOOM_ANCHOR_Y: Record<ZoomAnchorY, number> = {
-  top: -0.16,
+  top: -0.33,
   center: 0,
-  bottom: 0.16,
+  bottom: 0.33,
 };
 
 export interface ZoomEvent {
@@ -130,6 +136,7 @@ export interface ZoomEvent {
   x: number; // phone offset during the zoom, canvas fraction (-0.5..0.5)
   y: number;
   ease: ZoomEase;
+  lane: number; // which effect lane (row) it sits on
 }
 
 export interface TapEvent {
@@ -139,6 +146,7 @@ export interface TapEvent {
   y: number;
   duration: number; // seconds the ripple animates
   size: number; // ripple size multiplier, 1 = default
+  lane: number; // which effect lane (row) it sits on
 }
 
 /** Default tap-ripple length, in seconds. */
@@ -159,13 +167,18 @@ export interface RotateEvent {
   id: string;
   start: number; // seconds
   duration: number; // seconds
-  angle: number; // degrees the phone rotates to
+  angle: number; // 2D roll (degrees) around the screen
+  rotateX: number; // 3D tilt around the horizontal axis (degrees)
+  rotateY: number; // 3D tilt around the vertical axis (degrees)
   ease: ZoomEase;
+  lane: number; // which effect lane (row) it sits on
 }
 
 export const DEFAULT_ROTATE = {
   duration: 1.5,
-  angle: 8,
+  angle: 0,
+  rotateX: 0,
+  rotateY: 22,
   ease: "spring" as ZoomEase,
 };
 

@@ -139,13 +139,20 @@ export function drawDevice(
   ctx.fillStyle = "#050506";
   ctx.fill();
 
-  // Screen: clip and paint the video (cover).
+  // Screen: clip and paint the video (cover). Draw whenever the video has
+  // dimensions — even mid-seek (readyState can dip), drawImage keeps the last
+  // presented frame, which avoids dark flashes while scrubbing.
   ctx.save();
   roundedRectPath(ctx, geo.screen, geo.screenRadius);
   ctx.clip();
-  if (video && video.readyState >= 2 && video.videoWidth > 0) {
+  if (video && video.videoWidth > 0) {
     const dr = fitRect(video.videoWidth, video.videoHeight, geo.screen, "cover");
-    ctx.drawImage(video, dr.x, dr.y, dr.w, dr.h);
+    try {
+      ctx.drawImage(video, dr.x, dr.y, dr.w, dr.h);
+    } catch {
+      ctx.fillStyle = "#111114";
+      ctx.fillRect(geo.screen.x, geo.screen.y, geo.screen.w, geo.screen.h);
+    }
   } else {
     ctx.fillStyle = "#111114";
     ctx.fillRect(geo.screen.x, geo.screen.y, geo.screen.w, geo.screen.h);
