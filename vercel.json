@@ -1,0 +1,6 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "cd mockup-studio && npm install",
+  "buildCommand": "cd mockup-studio && npm run build",
+  "outputDirectory": "mockup-studio/dist"
+}
