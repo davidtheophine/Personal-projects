@@ -33,16 +33,11 @@ npm run preview  # serve the production build locally
 npm test         # vitest unit tests
 ```
 
-## Hosting
+## Hosting (Vercel)
 It's a static SPA (`vite.config.ts` sets `base: "./"`, so it works served from any path).
-
-- **GitHub Pages** — the workflow at `.github/workflows/deploy-mockup-studio.yml` (repo
-  root) builds this folder and deploys on every push to `main`. Enable it once under
-  **Settings → Pages → Source: "GitHub Actions"**. Live at
-  `https://davidtheophine.github.io/Personal-projects/`.
-- **Vercel / Cloudflare Pages** (alternative) — import the repo and set
-  **Root Directory = `mockup-studio`**, build `npm run build`, output `dist`. Gives a
-  per-project URL; handy if you later host several projects from this repo.
+The repo-root `vercel.json` tells Vercel to build this `mockup-studio/` subfolder and
+serve its `dist/`, so importing `Personal-projects` into Vercel works with no extra
+configuration. Every push to `main` auto-deploys.
 
 ## Roadmap
 Later milestones: crisp **H.264 MP4** export via WebCodecs + `mp4-muxer`, **GIF** export,
