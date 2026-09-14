@@ -98,6 +98,48 @@ export function drawDeviceShadow(
 }
 
 /**
+ * Draw the raw video directly on the canvas (no phone frame) as a rounded card
+ * with a drop shadow. Used when the device frame is turned off. `rect` is sized
+ * to the video's aspect, so "cover" fills it with no letterboxing; the video is
+ * drawn on top of the shadow's opaque fill, so only the soft halo shows.
+ */
+export function drawBareVideo(
+  ctx: CanvasRenderingContext2D,
+  rect: Rect,
+  video: HTMLVideoElement | null,
+  shadow: ShadowState,
+): void {
+  const radius = rect.w * 0.045;
+  if (shadow.opacity > 0) {
+    ctx.save();
+    ctx.shadowColor = withAlpha(shadow.color, shadow.opacity);
+    ctx.shadowBlur = shadow.blur;
+    ctx.shadowOffsetX = shadow.x;
+    ctx.shadowOffsetY = shadow.y;
+    roundedRectPath(ctx, rect, radius);
+    ctx.fillStyle = "#000000";
+    ctx.fill();
+    ctx.restore();
+  }
+  ctx.save();
+  roundedRectPath(ctx, rect, radius);
+  ctx.clip();
+  if (video && video.videoWidth > 0) {
+    const dr = fitRect(video.videoWidth, video.videoHeight, rect, "cover");
+    try {
+      ctx.drawImage(video, dr.x, dr.y, dr.w, dr.h);
+    } catch {
+      ctx.fillStyle = "#111114";
+      ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+    }
+  } else {
+    ctx.fillStyle = "#111114";
+    ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+  }
+  ctx.restore();
+}
+
+/**
  * Draw the iPhone body + bezel, clip the screen and paint the current video
  * frame into it, then draw the side buttons. `video` may be null (shows a dark
  * placeholder screen).

@@ -84,9 +84,13 @@ export interface ShadowState {
   opacity: number; // 0..1
 }
 
+/** "iphone" = the phone mockup; "none" = the raw video shown directly on the canvas. */
+export type DeviceFrame = "iphone" | "none";
+
 export interface DeviceState {
   /** titanium body colour */
   color: string;
+  frame: DeviceFrame;
 }
 
 export interface LayoutState {
@@ -172,6 +176,12 @@ export interface RotateEvent {
   rotateY: number; // 3D tilt around the vertical axis (degrees)
   ease: ZoomEase;
   lane: number; // which effect lane (row) it sits on
+  /**
+   * Off by default: the phone renders as the flat 2D frame and this segment only
+   * applies a 2D roll. Turn on to swap in the real 3D iPhone model and tilt it in
+   * space (grab the phone in the preview). Kept per-segment so 3D is opt-in.
+   */
+  is3D: boolean;
 }
 
 export const DEFAULT_ROTATE = {
@@ -180,6 +190,19 @@ export const DEFAULT_ROTATE = {
   rotateX: 0,
   rotateY: 22,
   ease: "spring" as ZoomEase,
+  is3D: false,
+};
+
+/**
+ * Attribution for the bundled 3D iPhone model. Its license (CC BY 4.0) requires
+ * a visible credit wherever the model is used.
+ */
+export const IPHONE_MODEL_ATTRIBUTION = {
+  author: "polyman",
+  license: "CC BY 4.0",
+  licenseUrl: "https://creativecommons.org/licenses/by/4.0/",
+  source:
+    "https://sketchfab.com/3d-models/apple-iphone-15-pro-max-black-df17520841214c1792fb8a44c6783ee7",
 };
 
 export interface Project {
@@ -233,7 +256,7 @@ export function defaultProject(): Project {
         offsetY: 0,
       },
     },
-    device: { color: "#b7b3a8" },
+    device: { color: "#b7b3a8", frame: "iphone" },
     layout: {
       scale: 1,
       x: 0,

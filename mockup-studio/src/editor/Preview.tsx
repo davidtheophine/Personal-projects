@@ -2,8 +2,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { Upload } from "lucide-react";
 import { aspectDims, type Project } from "@/state/project";
 import { activeAt, clipLen, totalDuration } from "@/state/clips";
-import { computeDeviceRect, renderFrame } from "@/render/render-frame";
-import { deviceGeometry } from "@/render/device-frame";
+import { displayLayout, renderFrame } from "@/render/render-frame";
 import { sampleZoom } from "@/render/zoom";
 import { clamp } from "@/render/geometry";
 
@@ -14,6 +13,8 @@ interface PreviewProps {
   playing: boolean;
   currentTime: number;
   tapPlacing: boolean;
+  /** Flips true once the 3D model has loaded, so we redraw with it. */
+  model3DReady: boolean;
   /** When set, the playhead is inside the selected zoom — dragging pans the focus. */
   zoomPan: { x: number; y: number; scale: number } | null;
   /** When set, the playhead is inside the selected rotate — dragging tilts the phone in 3D. */
@@ -36,6 +37,7 @@ export function Preview({
   playing,
   currentTime,
   tapPlacing,
+  model3DReady,
   zoomPan,
   rotatePan,
   selectedTapPos,
@@ -105,10 +107,10 @@ export function Preview({
     el.currentTime = time;
   }, [draw]);
 
-  // Redraw whenever the scene changes.
+  // Redraw whenever the scene changes — or when the 3D model finishes loading.
   useEffect(() => {
     draw();
-  }, [draw]);
+  }, [draw, model3DReady]);
 
   // Any clip element becoming ready (seeked / first frame) triggers a redraw.
   useEffect(() => {
@@ -221,14 +223,14 @@ export function Preview({
   // you click; the tap marker applies it forward.
   const zoomXform = () => {
     const z = sampleZoom(project.zooms, currentTime);
-    const dr = computeDeviceRect(project, W, H);
+    const { rect: dr, screen } = displayLayout(project, W, H);
     return {
       s: z.scale,
       cx: dr.x + dr.w / 2,
       cy: dr.y + dr.h / 2,
       fx: dr.x + dr.w * (0.5 + z.x),
       fy: dr.y + dr.h * (0.5 + z.y),
-      screen: deviceGeometry(dr).screen,
+      screen,
     };
   };
   const clientToTap = (clientX: number, clientY: number, rect: DOMRect) => {
@@ -305,7 +307,7 @@ export function Preview({
     } else if (d.mode === "zoom") {
       // Pan the zoom focus so the phone tracks the cursor 1:1 (the focal offset
       // moves the phone by scale × its size, so divide it back out).
-      const dr = computeDeviceRect(project, W, H);
+      const dr = displayLayout(project, W, H).rect;
       const nx = clamp(d.ox - ((e.clientX - d.sx) * W) / (d.w * d.scale * dr.w), -0.5, 0.5);
       const ny = clamp(d.oy - ((e.clientY - d.sy) * H) / (d.h * d.scale * dr.h), -0.5, 0.5);
       onRepositionZoom(nx, ny);

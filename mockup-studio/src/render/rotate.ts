@@ -5,12 +5,15 @@ export interface RotateSample {
   z: number; // 2D roll (degrees)
   x: number; // 3D tilt around the horizontal axis (degrees)
   y: number; // 3D tilt around the vertical axis (degrees)
+  /** True while a segment with 3D enabled is active → render the 3D model. */
+  is3D: boolean;
 }
 
 /**
  * The effective rotation at time `t`: eases in to the target, holds, then eases
- * back out over each event's window. Returns roll (z) + 3D tilt (x, y).
- * Overlapping events resolve to the first active one.
+ * back out over each event's window. Returns roll (z) + 3D tilt (x, y), plus
+ * whether the active segment wants the 3D model. Overlapping events resolve to
+ * the first active one.
  */
 export function sampleRotate(rotates: RotateEvent[], t: number): RotateSample {
   for (const r of rotates) {
@@ -27,7 +30,12 @@ export function sampleRotate(rotates: RotateEvent[], t: number): RotateSample {
     } else {
       p = 1;
     }
-    return { z: r.angle * p, x: (r.rotateX ?? 0) * p, y: (r.rotateY ?? 0) * p };
+    return {
+      z: r.angle * p,
+      x: (r.rotateX ?? 0) * p,
+      y: (r.rotateY ?? 0) * p,
+      is3D: !!r.is3D,
+    };
   }
-  return { z: 0, x: 0, y: 0 };
+  return { z: 0, x: 0, y: 0, is3D: false };
 }

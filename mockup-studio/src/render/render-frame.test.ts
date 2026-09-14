@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeDeviceRect } from "./render-frame";
+import { computeDeviceRect, displayLayout } from "./render-frame";
 import { defaultProject } from "@/state/project";
 
 describe("computeDeviceRect", () => {
@@ -26,5 +26,22 @@ describe("computeDeviceRect", () => {
     );
     expect(half.w).toBeCloseTo(full.w * 0.5, 3);
     expect(half.h).toBeCloseTo(full.h * 0.5, 3);
+  });
+});
+
+describe("displayLayout", () => {
+  it("insets the screen inside the body when the iPhone frame is on", () => {
+    const p = defaultProject();
+    const { frameless, rect, screen } = displayLayout(p, 1080, 1920);
+    expect(frameless).toBe(false);
+    expect(screen.w).toBeLessThan(rect.w);
+    expect(screen.x).toBeGreaterThan(rect.x);
+  });
+
+  it("treats the whole video card as the screen when the frame is off", () => {
+    const p = { ...defaultProject(), device: { color: "#b7b3a8", frame: "none" as const } };
+    const { frameless, rect, screen } = displayLayout(p, 1080, 1920);
+    expect(frameless).toBe(true);
+    expect(screen).toEqual(rect);
   });
 });

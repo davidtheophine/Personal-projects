@@ -6,6 +6,7 @@ import {
   DEFAULT_TAP,
   DEFAULT_ZOOM,
   defaultProject,
+  IPHONE_MODEL_ATTRIBUTION,
   type AspectId,
   type BackgroundState,
   type DeviceState,
@@ -20,6 +21,7 @@ import {
 } from "@/state/project";
 import { activeAt, MIN_CLIP, totalDuration } from "@/state/clips";
 import { clamp } from "@/render/geometry";
+import { ensurePhone3D } from "@/render/device-3d";
 import { makeId } from "@/lib/id";
 import { extractThumbnails, loadImageFile, loadVideoFile, loadVideoUrl } from "@/lib/media";
 import { downloadBlob, exportVideo } from "@/export/export-webm";
@@ -60,6 +62,7 @@ export function App() {
   const [exporting, setExporting] = useState(false);
   const [exportPct, setExportPct] = useState(0);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [model3DReady, setModel3DReady] = useState(false);
 
   // Refs mirror state so callbacks can read the latest without re-subscribing.
   const clipsRef = useRef(project.clips);
@@ -172,6 +175,20 @@ export function App() {
     return () => clearTimeout(id);
   }, [project]);
 
+  // The 3D iPhone model is opt-in — only fetch/build it once a segment turns on
+  // 3D. When it's ready, flip a flag so the preview redraws with the real model.
+  const needs3D = project.rotates.some((r) => r.is3D);
+  useEffect(() => {
+    if (!needs3D || model3DReady) return;
+    let live = true;
+    void ensurePhone3D().then(() => {
+      if (live) setModel3DReady(true);
+    });
+    return () => {
+      live = false;
+    };
+  }, [needs3D, model3DReady]);
+
   const doReset = async () => {
     Object.values(videoElsRef.current).forEach((el) => el.pause());
     clipsRef.current.forEach((c) => {
@@ -267,6 +284,9 @@ export function App() {
     setExporting(true);
     setExportPct(0);
     try {
+      // Make sure the 3D model is loaded before exporting, or 3D segments would
+      // render as the 2D fallback in the output.
+      if (project.rotates.some((r) => r.is3D)) await ensurePhone3D();
       const blob = await exportVideo(project, bgImage, muted, (p) => setExportPct(p), controller.signal);
       const base = (project.clips[0]?.name ?? "mockup").replace(/\.[^.]+$/, "");
       downloadBlob(blob, `${base}-mockup`);
@@ -462,6 +482,7 @@ export function App() {
         rotateY: DEFAULT_ROTATE.rotateY,
         ease: DEFAULT_ROTATE.ease,
         lane: 0,
+        is3D: DEFAULT_ROTATE.is3D,
       };
       return { ...p, rotates: [...p.rotates, rotate] };
     });
@@ -618,8 +639,12 @@ export function App() {
   const selectedClip = selectedClipId
     ? (project.clips.find((c) => c.id === selectedClipId) ?? null)
     : null;
+  // Grab-to-tilt only applies to the 3D phone; not for a 2D rotate segment, and
+  // not when the phone frame is off (there's no phone to rotate in space).
   const rotatePan =
     selectedRotate &&
+    selectedRotate.is3D &&
+    project.device.frame !== "none" &&
     currentTime >= selectedRotate.start &&
     currentTime <= selectedRotate.start + selectedRotate.duration
       ? { x: selectedRotate.rotateX, y: selectedRotate.rotateY }
@@ -672,6 +697,7 @@ export function App() {
           playing={playing}
           currentTime={currentTime}
           tapPlacing={tapPlacing}
+          model3DReady={model3DReady}
           zoomPan={activeZoomPan}
           rotatePan={rotatePan}
           selectedTapPos={selectedTapPos}
@@ -731,6 +757,17 @@ export function App() {
             onChangeLayout={setLayout}
             onChangeShadow={setShadow}
           />
+          <p className="px-4 py-3 text-[10px] leading-relaxed text-muted-foreground/70">
+            3D iPhone model by {IPHONE_MODEL_ATTRIBUTION.author} ·{" "}
+            <a
+              href={IPHONE_MODEL_ATTRIBUTION.licenseUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="underline hover:text-muted-foreground"
+            >
+              {IPHONE_MODEL_ATTRIBUTION.license}
+            </a>
+          </p>
         </aside>
       </div>
 
