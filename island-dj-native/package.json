@@ -1,0 +1,27 @@
+{
+  "name": "island-dj-native",
+  "version": "1.0.0",
+  "main": "index.js",
+  "description": "Dynamic Island DJ genre picker — Expo/Skia port (runs in Expo Go)",
+  "scripts": {
+    "start": "expo start",
+    "ios": "expo start --ios",
+    "android": "expo start --android",
+    "web": "expo start --web",
+    "export": "expo export --platform ios"
+  },
+  "dependencies": {
+    "@expo/vector-icons": "^15.0.2",
+    "@shopify/react-native-skia": "2.6.2",
+    "babel-preset-expo": "~57.0.0",
+    "expo": "~57.0.9",
+    "expo-status-bar": "~57.0.1",
+    "react": "19.2.3",
+    "react-native": "0.86.2",
+    "react-native-gesture-handler": "~2.32.0",
+    "react-native-reanimated": "4.5.1",
+    "react-native-safe-area-context": "~5.7.0",
+    "react-native-worklets": "0.10.1"
+  },
+  "private": true
+}

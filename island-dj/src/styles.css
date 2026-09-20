@@ -1,0 +1,415 @@
+:root {
+  --font: -apple-system, 'SF Pro Display', 'SF Pro Text', BlinkMacSystemFont, 'Segoe UI', Roboto,
+    sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  width: 100%;
+}
+body {
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: none;
+  font-family: var(--font);
+  background: #0a0a0b;
+}
+
+.stage {
+  height: 100%;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(120% 100% at 50% 0%, #17171a 0%, #0a0a0b 60%);
+}
+
+/* ---------- device (titanium iPhone frame) ---------- */
+.device {
+  position: relative;
+  width: 428px;
+  height: 900px;
+  border-radius: 60px;
+  padding: 13px;
+  background: linear-gradient(
+    135deg,
+    #8a8a90 0%,
+    #45454b 8%,
+    #2b2b2f 22%,
+    #3f3f45 40%,
+    #26262a 60%,
+    #4c4c52 82%,
+    #2a2a2e 100%
+  );
+  box-shadow:
+    0 55px 130px rgba(0, 0, 0, 0.72),
+    0 10px 28px rgba(0, 0, 0, 0.5),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.22),
+    inset 0 1px 3px rgba(0, 0, 0, 0.6);
+  transform-origin: center center;
+  flex: none;
+}
+.device__screen {
+  position: relative;
+  width: 402px;
+  height: 874px;
+  border-radius: 54px;
+  overflow: hidden;
+  background: #000;
+  box-shadow: inset 0 0 0 2px #060606;
+}
+/* side buttons */
+.device__btn {
+  position: absolute;
+  background: linear-gradient(180deg, #6a6a70 0%, #3a3a40 45%, #2c2c30 100%);
+  border-radius: 3px;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.5);
+}
+.device__btn--mute {
+  left: -2px;
+  top: 150px;
+  width: 3px;
+  height: 26px;
+}
+.device__btn--volup {
+  left: -2px;
+  top: 200px;
+  width: 3px;
+  height: 56px;
+}
+.device__btn--voldn {
+  left: -2px;
+  top: 272px;
+  width: 3px;
+  height: 56px;
+}
+.device__btn--power {
+  right: -2px;
+  top: 236px;
+  width: 3px;
+  height: 100px;
+}
+
+/* ---------- backdrop (full composited home screen) ---------- */
+.backdrop__home {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* ---------- dynamic island (container) ---------- */
+.island {
+  position: absolute;
+  background: #000;
+  border: 1px solid #363636;
+  overflow: hidden;
+  z-index: 10;
+  box-shadow: 0 14px 44px rgba(0, 0, 0, 0.5);
+}
+.island__content {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* ---------- compact ---------- */
+.compact {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 11px;
+}
+.compact__art {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  object-fit: cover;
+}
+
+/* ---------- waveform ---------- */
+.waveform {
+  display: flex;
+  align-items: center;
+}
+.waveform__bar {
+  display: block;
+  border-radius: 2px;
+  background: linear-gradient(to bottom, #e6e6e6, #d7d9d8);
+}
+
+/* ---------- expanded now-playing ---------- */
+.expanded {
+  position: absolute;
+  inset: 0;
+}
+.expanded__art {
+  position: absolute;
+  left: 18px;
+  top: 16px;
+  width: 76px;
+  height: 76px;
+  border-radius: 17px;
+  object-fit: cover;
+}
+.expanded__wave {
+  position: absolute;
+  right: 20px;
+  top: 22px;
+}
+.expanded__meta {
+  position: absolute;
+  left: 104px;
+  top: 16px;
+  height: 76px;
+  right: 52px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.expanded__title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #fff;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.expanded__artist {
+  font-size: 16px;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.56);
+  margin-top: 3px;
+}
+
+.scrubber {
+  position: absolute;
+  left: 22px;
+  right: 22px;
+  top: 116px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.scrubber__time {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.5);
+  font-variant-numeric: tabular-nums;
+  min-width: 28px;
+}
+.scrubber__time--right {
+  text-align: right;
+}
+.scrubber__track {
+  position: relative;
+  flex: 1;
+  height: 5px;
+  border-radius: 3px;
+  background: #38383a;
+}
+.scrubber__fill {
+  height: 100%;
+  border-radius: 3px;
+  background: #9a9a9f;
+}
+
+.controls {
+  position: absolute;
+  left: 22px;
+  right: 22px;
+  top: 152px;
+  height: 44px;
+}
+.controls__btn {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.controls__transport {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: 52px;
+}
+.controls__out {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+}
+.controls__tile {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 40px;
+  height: 40px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  background: #0a1418;
+}
+
+/* ---------- grid state ---------- */
+.grid-state {
+  position: absolute;
+  inset: 0;
+}
+.grid-label {
+  position: absolute;
+  left: 23px;
+  top: 21.5px;
+  right: 20px;
+  height: 22px;
+}
+.grid-label__row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  white-space: nowrap;
+}
+.grid-label__genre {
+  font-size: 18px;
+  font-weight: 600;
+  color: #fefefe;
+  letter-spacing: -0.01em;
+}
+.grid-label__artist {
+  font-size: 18px;
+  font-weight: 400;
+  color: #76767c;
+}
+.grid-plane {
+  position: absolute;
+  left: 22px;
+  top: 56px;
+  width: 343px;
+  height: 140px; /* bottom margin 22px, matching the sides — concentric in the panel */
+  border-radius: 24px;
+  overflow: hidden;
+  background: #05100a;
+  touch-action: none;
+  cursor: crosshair;
+}
+
+/* ---------- genre field (shared: grid + tile) ---------- */
+.field {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.field canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.field-axis {
+  position: absolute;
+  background: rgba(255, 255, 255, 0.6);
+  mix-blend-mode: overlay;
+  pointer-events: none;
+}
+.field-axis--v {
+  left: calc(50% - 0.5px);
+  top: 0;
+  bottom: 0;
+  width: 1px;
+}
+.field-axis--h {
+  top: calc(50% - 0.5px);
+  left: 0;
+  right: 0;
+  height: 1px;
+}
+
+/* white translucent reticle, scaled by inline width/height */
+.reticle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  will-change: transform;
+  filter: drop-shadow(0 3px 7px rgba(0, 0, 0, 0.55));
+}
+/* four short ticks with a gap around the center — clean crosshair (à la 4FErRk) */
+.reticle__tick {
+  position: absolute;
+  background: rgba(255, 255, 255, 0.85);
+  border-radius: 2px;
+}
+.reticle__tick--t {
+  left: 50%;
+  top: 0;
+  width: 9%;
+  height: 26%;
+  transform: translateX(-50%);
+}
+.reticle__tick--b {
+  left: 50%;
+  bottom: 0;
+  width: 9%;
+  height: 26%;
+  transform: translateX(-50%);
+}
+.reticle__tick--l {
+  top: 50%;
+  left: 0;
+  height: 9%;
+  width: 26%;
+  transform: translateY(-50%);
+}
+.reticle__tick--r {
+  top: 50%;
+  right: 0;
+  height: 9%;
+  width: 26%;
+  transform: translateY(-50%);
+}
+.reticle__dot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 46%;
+  height: 46%;
+  border-radius: 50%;
+  background: rgba(215, 216, 215, 0.28);
+  border: 0.5px solid rgba(255, 255, 255, 0.95);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.reticle__pip {
+  width: 42%;
+  height: 42%;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.95);
+}
+/* mini field (genre tile): lighter reticle shadow so the small crosshair stays crisp */
+.field--mini .reticle {
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
+}
