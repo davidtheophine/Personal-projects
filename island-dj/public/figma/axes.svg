@@ -1,0 +1,17 @@
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="343" height="145" viewBox="0 0 343 145" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="axes">
+<g clip-path="url(#clip0_0_4)">
+<g id="Y">
+<line x1="171.615" y1="-0.000416536" x2="172.012" y2="144.999" stroke="white" style="mix-blend-mode:overlay" stroke-width="0.5"/>
+</g>
+<g id="X">
+<line y1="72.25" x2="342.5" y2="72.25" stroke="white" style="mix-blend-mode:overlay" stroke-width="0.5"/>
+</g>
+</g>
+</g>
+<defs>
+<clipPath id="clip0_0_4">
+<rect width="343" height="145" rx="8" fill="white"/>
+</clipPath>
+</defs>
+</svg>
