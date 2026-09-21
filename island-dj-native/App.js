@@ -1,12 +1,14 @@
 import { useState } from 'react'
 import { View, Image, useWindowDimensions, StyleSheet } from 'react-native'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
-import { SafeAreaProvider, useSafeAreaInsets, initialWindowMetrics } from 'react-native-safe-area-context'
+import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context'
 import { StatusBar } from 'expo-status-bar'
 import { useClock } from '@shopify/react-native-skia'
 import { useAnimatedReaction, useSharedValue, runOnJS } from 'react-native-reanimated'
+import * as Haptics from 'expo-haptics'
 import DynamicIsland from './src/components/DynamicIsland.jsx'
-import ClearanceControl from './src/components/ClearanceControl.jsx'
+import ControlPanel from './src/components/ControlPanel.jsx'
+import CoverPreloader from './src/components/CoverPreloader.jsx'
 import { HOME } from './src/assets.js'
 import { INITIAL_CURSOR, GENRE_POINTS, POINT_XY } from './src/data/genres.js'
 
@@ -32,23 +34,18 @@ function nearestGenre(x, y) {
 
 function Stage() {
   const { width, height } = useWindowDimensions()
-  const insets = useSafeAreaInsets()
   const scale = Math.min(width / DW, height / DH)
-
-  // The 402×874 art is full-screen, so on a notched phone the top safe-area inset
-  // is exactly where the real camera + hardware Dynamic Island sit and nothing
-  // interactive may render. Convert that inset (minus any letterbox already above
-  // the stage) into stage/design px so the island can clear it.
-  const stageOffsetY = (height - DH * scale) / 2
-  const safeTop = Math.max(0, (insets.top - stageOffsetY) / scale)
 
   const cx = useSharedValue(INITIAL_CURSOR.x)
   const cy = useSharedValue(INITIAL_CURSOR.y)
   const clock = useClock()
-  // space between the island's topmost content and the top of the screen (live,
-  // tuned by the on-screen slider). Starts just below the camera clearance.
-  const clearance = useSharedValue(Math.max(0, safeTop - 38))
+  // space between the island's topmost content and the top of the black island
+  const clearance = useSharedValue(20)
+  // album-grid tile size (px) + magnify (peak scale boost), live from the panel
+  const tilePitch = useSharedValue(48)
+  const magnify = useSharedValue(0.42)
 
+  const [gridMode, setGridMode] = useState('albums') // 'genre' | 'albums' (driven by the control panel)
   const [genre, setGenre] = useState(() => nearestGenre(INITIAL_CURSOR.x, INITIAL_CURSOR.y))
   const lastIdx = useSharedValue(-1)
   const setGenreIdx = (i) => setGenre(GENRE_POINTS[i])
@@ -72,6 +69,8 @@ function Stage() {
       if (best !== lastIdx.value) {
         lastIdx.value = best
         runOnJS(setGenreIdx)(best)
+        // selection tick each time the picker crosses into a new genre
+        runOnJS(Haptics.selectionAsync)()
       }
     },
   )
@@ -79,8 +78,18 @@ function Stage() {
   return (
     <View style={[styles.stage, { transform: [{ scale }] }]}>
       <Image source={HOME} style={styles.home} resizeMode="cover" />
-      <DynamicIsland cx={cx} cy={cy} clock={clock} genre={genre} clearance={clearance} />
-      <ClearanceControl value={clearance} />
+      <DynamicIsland
+        cx={cx}
+        cy={cy}
+        clock={clock}
+        genre={genre}
+        clearance={clearance}
+        onPickGenre={setGenre}
+        tilePitch={tilePitch}
+        magnify={magnify}
+        mode={gridMode}
+      />
+      <ControlPanel mode={gridMode} onModeChange={setGridMode} pitch={tilePitch} magnify={magnify} />
     </View>
   )
 }
@@ -91,6 +100,7 @@ export default function App() {
       <SafeAreaProvider initialMetrics={initialWindowMetrics} style={styles.center}>
         <StatusBar hidden />
         <Stage />
+        <CoverPreloader />
       </SafeAreaProvider>
     </GestureHandlerRootView>
   )

@@ -1,7 +1,7 @@
 // Four genre "families", one per quadrant (à la everynoise.com). Center = broad;
 // pushing toward a corner gets progressively more niche. Each point carries a
 // representative artist + a real song. x,y normalized 0..1 (y DOWN).
-// Ported verbatim from the web app.
+// 12 per quadrant (48 total) → more album covers, less-repetitive album grid.
 
 export const INITIAL_CURSOR = { x: 0.72, y: 0.27 }
 
@@ -15,6 +15,10 @@ export const GENRE_POINTS = [
   { name: 'Alternative Hip-Hop', artist: 'Tyler, the Creator', song: 'EARFQUAKE', x: 0.86, y: 0.15 },
   { name: 'Neo-Psychedelia', artist: 'Steve Lacy', song: 'Dark Red', x: 0.91, y: 0.1 },
   { name: 'Hyperpop', artist: 'Charli XCX', song: 'Vroom Vroom', x: 0.96, y: 0.05 },
+  { name: 'Art Pop', artist: 'Lorde', song: 'Solar Power', x: 0.63, y: 0.14 },
+  { name: 'Pop Rap', artist: 'Doja Cat', song: 'Say So', x: 0.71, y: 0.44 },
+  { name: 'Bedroom Pop', artist: 'Rex Orange County', song: 'Loving Is Easy', x: 0.55, y: 0.31 },
+  { name: 'Flamenco Pop', artist: 'Rosalía', song: 'Malamente', x: 0.9, y: 0.3 },
 
   // ── Jazz family · top-left · green ──
   { name: 'Soul', artist: "D'Angelo", song: 'Untitled (How Does It Feel)', x: 0.42, y: 0.42 },
@@ -25,6 +29,10 @@ export const GENRE_POINTS = [
   { name: 'Spiritual Jazz', artist: 'Kamasi Washington', song: 'Truth', x: 0.15, y: 0.16 },
   { name: 'Bebop', artist: 'Charlie Parker', song: 'Ko-Ko', x: 0.1, y: 0.22 },
   { name: 'Free Jazz', artist: 'John Coltrane', song: 'Ascension', x: 0.05, y: 0.06 },
+  { name: 'Jazz-Funk', artist: 'Herbie Hancock', song: 'Cantaloupe Island', x: 0.3, y: 0.44 },
+  { name: 'Jazz Fusion', artist: 'Thundercat', song: 'Them Changes', x: 0.45, y: 0.3 },
+  { name: 'Cool Jazz', artist: 'Bill Evans', song: 'Waltz for Debby', x: 0.18, y: 0.32 },
+  { name: 'Vocal Jazz', artist: 'Nina Simone', song: 'Feeling Good', x: 0.23, y: 0.1 },
 
   // ── Electronic family · bottom-left · cyan ──
   { name: 'Electronic', artist: 'ODESZA', song: 'Say My Name', x: 0.42, y: 0.58 },
@@ -33,8 +41,12 @@ export const GENRE_POINTS = [
   { name: 'Deep House', artist: 'Bonobo', song: 'Kerala', x: 0.24, y: 0.75 },
   { name: 'Ambient', artist: 'Jon Hopkins', song: 'Immunity', x: 0.42, y: 0.82 },
   { name: 'Techno', artist: 'Charlotte de Witte', song: 'Formula', x: 0.16, y: 0.83 },
-  { name: 'IDM', artist: 'Aphex Twin', song: 'Xtal', cover: 'aphex-twin', x: 0.1, y: 0.9 },
+  { name: 'IDM', artist: 'Aphex Twin', song: 'Xtal', x: 0.1, y: 0.9 },
   { name: 'Breakcore', artist: 'Venetian Snares', song: 'Hajnal', x: 0.05, y: 0.96 },
+  { name: 'Folktronica', artist: 'Four Tet', song: 'Baby', x: 0.3, y: 0.6 },
+  { name: 'Future Garage', artist: 'Burial', song: 'Archangel', x: 0.12, y: 0.7 },
+  { name: 'French House', artist: 'Daft Punk', song: 'Around the World', x: 0.45, y: 0.7 },
+  { name: 'Future Bass', artist: 'Flume', song: 'Never Be Like You', x: 0.35, y: 0.9 },
 
   // ── Rock family · bottom-right · purple ──
   { name: 'Rock', artist: 'Foo Fighters', song: 'Everlong', x: 0.58, y: 0.58 },
@@ -45,6 +57,10 @@ export const GENRE_POINTS = [
   { name: 'Hard Rock', artist: 'Queens of the Stone Age', song: 'No One Knows', x: 0.83, y: 0.83 },
   { name: 'Metal', artist: 'Metallica', song: 'Master of Puppets', x: 0.9, y: 0.9 },
   { name: 'Death Metal', artist: 'Death', song: 'Crystal Mountain', x: 0.96, y: 0.96 },
+  { name: 'Art Rock', artist: 'Radiohead', song: 'Paranoid Android', x: 0.64, y: 0.62 },
+  { name: 'Classic Rock', artist: 'Led Zeppelin', song: 'Kashmir', x: 0.78, y: 0.59 },
+  { name: 'Grunge', artist: 'Nirvana', song: 'Smells Like Teen Spirit', x: 0.7, y: 0.9 },
+  { name: 'Rap Metal', artist: 'Rage Against the Machine', song: 'Killing in the Name', x: 0.92, y: 0.74 },
 ]
 
 // Plain [x,y] array for use inside reanimated worklets (serializable).

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { View, Text, Image, Pressable, StyleSheet } from 'react-native'
+import { View, Text, Pressable, StyleSheet } from 'react-native'
+import { Image } from 'expo-image'
 import { Ionicons } from '@expo/vector-icons'
 import Animated, {
   useSharedValue,
@@ -10,9 +11,7 @@ import Animated, {
 } from 'react-native-reanimated'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Waveform from './Waveform.jsx'
-import GenreField from './GenreField.jsx'
-import { coverFor } from '../assets.js'
-import { TILE_PARAMS } from '../config.js'
+import { coverFor, GRID_ICON } from '../assets.js'
 
 const ICON = 'rgba(255,255,255,0.92)'
 const DURATION = 249 // seconds (matches the design's 1:12 / -2:57)
@@ -30,9 +29,14 @@ export default function ExpandedContent({ genre, cx, cy, clock, onOpenGrid, clea
     playingSV.value = playing
   }, [playing, playingSV])
 
-  const progress = useSharedValue(72 / DURATION) // start at 1:12
+  const progress = useSharedValue(0) // the selected song plays from the start
   const scrubbing = useSharedValue(false)
   const trackW = useSharedValue(1)
+
+  // a newly-selected song restarts from 0:00 (the reaction below updates the label)
+  useEffect(() => {
+    progress.value = 0
+  }, [genre, progress])
 
   // advance the playhead on the UI thread; loop at the end
   useFrameCallback((f) => {
@@ -45,7 +49,7 @@ export default function ExpandedContent({ genre, cx, cy, clock, onOpenGrid, clea
   })
 
   // push the second-resolution time to JS only when it changes (1/sec, not per frame)
-  const [elapsed, setElapsed] = useState(72)
+  const [elapsed, setElapsed] = useState(0)
   useAnimatedReaction(
     () => Math.floor(progress.value * DURATION),
     (sec, prev) => {
@@ -81,7 +85,7 @@ export default function ExpandedContent({ genre, cx, cy, clock, onOpenGrid, clea
     <View style={StyleSheet.absoluteFill}>
       {/* clearance: everything sits below the camera / hardware Dynamic Island (live) */}
       <Animated.View style={[StyleSheet.absoluteFill, clearStyle]}>
-        <Image source={coverFor(genre)} style={styles.art} />
+        <Image source={coverFor(genre)} style={styles.art} contentFit="cover" cachePolicy="memory-disk" transition={0} />
 
         <View style={styles.meta}>
           <Text style={styles.title} numberOfLines={1}>
@@ -114,19 +118,8 @@ export default function ExpandedContent({ genre, cx, cy, clock, onOpenGrid, clea
         </View>
 
         <View style={styles.controls}>
-          <Pressable style={styles.tile} onPress={onOpenGrid}>
-            <GenreField
-              width={40}
-              height={40}
-              cx={cx}
-              cy={cy}
-              clock={clock}
-              params={TILE_PARAMS}
-              interactive={false}
-              reticleSize={12}
-              showAxes
-              borderRadius={6}
-            />
+          <Pressable style={styles.tile} onPress={onOpenGrid} hitSlop={14}>
+            <Image source={GRID_ICON} style={styles.gridIcon} contentFit="contain" transition={0} />
           </Pressable>
 
           <View style={styles.transport}>
@@ -140,6 +133,10 @@ export default function ExpandedContent({ genre, cx, cy, clock, onOpenGrid, clea
               <Ionicons name="play-forward" size={30} color={ICON} />
             </Pressable>
           </View>
+
+          <Pressable style={styles.vol} hitSlop={12}>
+            <Ionicons name="volume-medium" size={28} color="#9a9a9f" />
+          </Pressable>
         </View>
       </Animated.View>
     </View>
@@ -159,7 +156,13 @@ const styles = StyleSheet.create({
   track: { height: 5, borderRadius: 3, backgroundColor: '#38383a', overflow: 'hidden' },
   fill: { height: '100%', borderRadius: 3, backgroundColor: '#9a9a9f' },
   controls: { position: 'absolute', left: 22, right: 22, top: 152, height: 44 },
-  tile: { position: 'absolute', left: 0, top: 2, width: 40, height: 40, borderRadius: 6, overflow: 'hidden' },
+  // Flanking controls: full-height, pinned to their edge, vertically centered on
+  // the row's centerline. Grid box (24) < volume size (28) because the grid glyph
+  // fills its box edge-to-edge (dense) while the volume outline has internal
+  // padding — so at these numbers their VISIBLE heights match and they read balanced.
+  tile: { position: 'absolute', left: 0, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
+  gridIcon: { width: 24, height: 24 },
+  vol: { position: 'absolute', right: 0, top: 0, bottom: 0, justifyContent: 'center' },
   transport: {
     position: 'absolute',
     left: 0,

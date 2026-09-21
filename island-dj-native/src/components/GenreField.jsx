@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { View, StyleSheet } from 'react-native'
-import { Canvas, Fill, Shader } from '@shopify/react-native-skia'
+import { Canvas, Fill, Line, Shader, vec } from '@shopify/react-native-skia'
 import Animated, { useAnimatedStyle, useDerivedValue } from 'react-native-reanimated'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import { genreEffect, staticUniforms } from '../shader/genreField.js'
@@ -67,14 +67,14 @@ export default function GenreField({
         ) : (
           <Fill color="#062712" />
         )}
+        {/* axes: 0.5px white cross, overlay-blended with the gradient (matches Figma) */}
+        {showAxes && (
+          <>
+            <Line p1={vec(width / 2, 0)} p2={vec(width / 2, height)} color="white" strokeWidth={0.5} blendMode="overlay" />
+            <Line p1={vec(0, height / 2)} p2={vec(width, height / 2)} color="white" strokeWidth={0.5} blendMode="overlay" />
+          </>
+        )}
       </Canvas>
-
-      {showAxes && (
-        <>
-          <View style={[styles.axis, { left: width / 2 - 0.5, top: 0, width: 1, height }]} />
-          <View style={[styles.axis, { top: height / 2 - 0.5, left: 0, height: 1, width }]} />
-        </>
-      )}
 
       <Animated.View style={[{ position: 'absolute', width: rs, height: rs }, styles.reticle, reticlePos]}>
         <View style={[styles.tick, { left: (rs - thick) / 2, top: 0, width: thick, height: len }]} />
@@ -104,7 +104,6 @@ export default function GenreField({
 }
 
 const styles = StyleSheet.create({
-  axis: { position: 'absolute', backgroundColor: 'rgba(255,255,255,0.16)' },
   reticle: {
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
