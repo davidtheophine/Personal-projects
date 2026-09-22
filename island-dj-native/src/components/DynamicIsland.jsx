@@ -29,7 +29,7 @@ const OPEN = { left: 7.5, top: 6, width: 387, radius: 48 } // height = 218 + cle
 const OPEN_SPRING = { mass: 1, stiffness: 300, damping: 24 } // ζ≈0.69
 const CLOSE_SPRING = { mass: 1, stiffness: 300, damping: 35 } // ζ≈1.0, no overshoot
 
-export default function DynamicIsland({ cx, cy, clock, genre, clearance, onPickGenre, tilePitch, magnify, mode }) {
+export default function DynamicIsland({ cx, cy, clock, genre, clearance, onPickGenre, tilePitch, magnify, vignette, mode }) {
   const [state, setState] = useState('compact')
   const reduce = useReducedMotion()
   const open = useSharedValue(0) // 0 = compact, 1 = expanded/grid
@@ -123,6 +123,7 @@ export default function DynamicIsland({ cx, cy, clock, genre, clearance, onPickG
               clearance={clearance}
               tilePitch={tilePitch}
               magnify={magnify}
+              vignette={vignette}
               mode={mode}
             />
             </Animated.View>

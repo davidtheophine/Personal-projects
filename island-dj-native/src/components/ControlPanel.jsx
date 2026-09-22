@@ -12,7 +12,7 @@ const MODES = [
 
 // Bottom dev/tuning panel: interaction switch + album tile-size + zoom sliders.
 // Collapses to a small handle. Delete once values are baked.
-export default function ControlPanel({ mode, onModeChange, pitch, magnify }) {
+export default function ControlPanel({ mode, onModeChange, pitch, magnify, vignette }) {
   const [shown, setShown] = useState(true)
 
   return (
@@ -22,6 +22,7 @@ export default function ControlPanel({ mode, onModeChange, pitch, magnify }) {
           <SegmentedControl value={mode} options={MODES} onChange={onModeChange} />
           <Slider value={pitch} min={40} max={84} round={1} format={(v) => `tile ${v}px`} />
           <Slider value={magnify} min={0.1} max={1.2} round={0.02} format={(v) => `zoom ${Math.round(v * 100)}`} />
+          <Slider value={vignette} min={0} max={1} round={0.02} format={(v) => `vignette ${Math.round(v * 100)}`} />
         </Animated.View>
       )}
       <Pressable style={styles.handle} onPress={() => setShown((s) => !s)} hitSlop={12}>

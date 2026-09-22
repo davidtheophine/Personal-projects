@@ -12,6 +12,8 @@ import Animated, {
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Waveform from './Waveform.jsx'
 import { coverFor, GRID_ICON } from '../assets.js'
+import { GENRE_POINTS } from '../data/genres.js'
+import { useAudio } from '../audio/AudioProvider.jsx'
 
 const ICON = 'rgba(255,255,255,0.92)'
 const DURATION = 249 // seconds (matches the design's 1:12 / -2:57)
@@ -22,12 +24,19 @@ function fmt(s) {
 }
 
 export default function ExpandedContent({ genre, cx, cy, clock, onOpenGrid, clearance }) {
-  // ---- simulated player (no audio) ----
-  const [playing, setPlaying] = useState(true)
-  const playingSV = useSharedValue(true)
+  // ---- real audio: a 30s iTunes preview, gated by the shared engine ----
+  // `playing` (default false) comes from the engine; the play button toggles it.
+  const { playing, audio } = useAudio()
+  const idx = Math.max(0, GENRE_POINTS.indexOf(genre))
+  const playingSV = useSharedValue(playing)
   useEffect(() => {
     playingSV.value = playing
   }, [playing, playingSV])
+
+  // preload this song so the play button sounds instantly (not silent-until-buffered)
+  useEffect(() => {
+    audio.prepare(idx)
+  }, [idx, audio])
 
   const progress = useSharedValue(0) // the selected song plays from the start
   const scrubbing = useSharedValue(false)
@@ -126,7 +135,7 @@ export default function ExpandedContent({ genre, cx, cy, clock, onOpenGrid, clea
             <Pressable hitSlop={12}>
               <Ionicons name="play-back" size={30} color={ICON} />
             </Pressable>
-            <Pressable hitSlop={12} onPress={() => setPlaying((p) => !p)}>
+            <Pressable hitSlop={12} onPress={() => audio.toggle(idx)}>
               <Ionicons name={playing ? 'pause' : 'play'} size={42} color={ICON} />
             </Pressable>
             <Pressable hitSlop={12}>

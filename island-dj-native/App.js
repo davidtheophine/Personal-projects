@@ -9,6 +9,7 @@ import * as Haptics from 'expo-haptics'
 import DynamicIsland from './src/components/DynamicIsland.jsx'
 import ControlPanel from './src/components/ControlPanel.jsx'
 import CoverPreloader from './src/components/CoverPreloader.jsx'
+import { AudioProvider } from './src/audio/AudioProvider.jsx'
 import { HOME } from './src/assets.js'
 import { INITIAL_CURSOR, GENRE_POINTS, POINT_XY } from './src/data/genres.js'
 
@@ -44,6 +45,7 @@ function Stage() {
   // album-grid tile size (px) + magnify (peak scale boost), live from the panel
   const tilePitch = useSharedValue(48)
   const magnify = useSharedValue(0.42)
+  const vignette = useSharedValue(0.5) // grid centre-vignette strength (0 = off)
 
   const [gridMode, setGridMode] = useState('albums') // 'genre' | 'albums' (driven by the control panel)
   const [genre, setGenre] = useState(() => nearestGenre(INITIAL_CURSOR.x, INITIAL_CURSOR.y))
@@ -87,9 +89,16 @@ function Stage() {
         onPickGenre={setGenre}
         tilePitch={tilePitch}
         magnify={magnify}
+        vignette={vignette}
         mode={gridMode}
       />
-      <ControlPanel mode={gridMode} onModeChange={setGridMode} pitch={tilePitch} magnify={magnify} />
+      <ControlPanel
+        mode={gridMode}
+        onModeChange={setGridMode}
+        pitch={tilePitch}
+        magnify={magnify}
+        vignette={vignette}
+      />
     </View>
   )
 }
@@ -99,8 +108,10 @@ export default function App() {
     <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider initialMetrics={initialWindowMetrics} style={styles.center}>
         <StatusBar hidden />
-        <Stage />
-        <CoverPreloader />
+        <AudioProvider>
+          <Stage />
+          <CoverPreloader />
+        </AudioProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   )

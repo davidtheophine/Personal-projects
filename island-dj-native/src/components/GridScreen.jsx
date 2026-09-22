@@ -14,7 +14,7 @@ import { DEFAULT_PARAMS } from '../config.js'
 // The grid state: shared genre/artist label + the active picker interaction.
 // Which interaction (`mode`) and the album tile size come from the bottom
 // ControlPanel (lifted to App).
-export default function GridScreen({ genre, cx, cy, clock, onCollapse, onPickGenre, clearance, tilePitch, magnify, mode }) {
+export default function GridScreen({ genre, cx, cy, clock, onCollapse, onPickGenre, clearance, tilePitch, magnify, vignette, mode }) {
   const grow = useSharedValue(0)
   useEffect(() => {
     grow.value = withTiming(1, { duration: 420, easing: Easing.bezier(0.23, 1, 0.32, 1) })
@@ -41,7 +41,7 @@ export default function GridScreen({ genre, cx, cy, clock, onCollapse, onPickGen
 
         <Animated.View style={[styles.body, mode === 'genre' ? growStyle : null]}>
           {mode === 'albums' ? (
-            <AlbumGrid genre={genre} onPickGenre={onPickGenre} pitch={tilePitch} magnify={magnify} />
+            <AlbumGrid genre={genre} onPickGenre={onPickGenre} pitch={tilePitch} magnify={magnify} vignette={vignette} />
           ) : (
             <GenreField
               width={343}

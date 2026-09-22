@@ -10,7 +10,7 @@ export const GENRE_POINTS = [
   { name: 'Pop', artist: 'Dua Lipa', song: 'Levitating', x: 0.58, y: 0.42 },
   { name: 'Indie Pop', artist: 'Clairo', song: 'Bags', x: 0.58, y: 0.22 },
   { name: 'Synth-Pop', artist: 'The Weeknd', song: 'Blinding Lights', x: 0.66, y: 0.34 },
-  { name: 'Alternative R&B', artist: 'Frank Ocean', song: 'Ivy', x: 0.72, y: 0.27 },
+  { name: 'Alternative R&B', artist: 'Frank Ocean', song: 'White Ferrari', x: 0.72, y: 0.27 },
   { name: 'Alt R&B', artist: 'SZA', song: 'Snooze', x: 0.8, y: 0.2 },
   { name: 'Alternative Hip-Hop', artist: 'Tyler, the Creator', song: 'EARFQUAKE', x: 0.86, y: 0.15 },
   { name: 'Neo-Psychedelia', artist: 'Steve Lacy', song: 'Dark Red', x: 0.91, y: 0.1 },
