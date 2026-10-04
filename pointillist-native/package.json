@@ -1,0 +1,26 @@
+{
+  "name": "pointillist-native",
+  "version": "0.1.0",
+  "main": "index.js",
+  "description": "See the world as a pointillist painting — live camera, GPU dot shader, Expo Go",
+  "scripts": {
+    "start": "expo start",
+    "ios": "expo start --ios",
+    "android": "expo start --android",
+    "export": "expo export --platform ios",
+    "lab": "node shader-lab/serve.js"
+  },
+  "dependencies": {
+    "expo": "~57.0.9",
+    "expo-camera": "~57.0.6",
+    "expo-gl": "~57.0.2",
+    "expo-haptics": "~57.0.3",
+    "expo-media-library": "~57.0.5",
+    "expo-status-bar": "~57.0.1",
+    "react": "19.2.3",
+    "react-native": "0.86.2",
+    "react-native-safe-area-context": "~5.7.0",
+    "babel-preset-expo": "~57.0.0"
+  },
+  "private": true
+}

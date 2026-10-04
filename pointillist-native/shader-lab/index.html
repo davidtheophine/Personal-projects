@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Pointillist — shader lab</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: #0b0b0d; color: #e8e6e1; min-height: 100vh;
+    font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+    display: flex; flex-direction: column; align-items: center; gap: 18px; padding: 24px;
+  }
+  h1 { font-size: 12px; letter-spacing: .34em; text-transform: uppercase; opacity: .55; margin: 0; font-weight: 500; }
+  #stage { position: relative; border-radius: 14px; overflow: hidden; box-shadow: 0 24px 60px #0008; }
+  canvas { display: block; max-width: min(92vw, 720px); height: auto; }
+  #panel { display: grid; grid-template-columns: 70px 1fr 70px; gap: 10px 14px; align-items: center; width: min(92vw, 720px); }
+  label { opacity: .6; letter-spacing: .12em; text-transform: uppercase; font-size: 11px; }
+  output { opacity: .85; text-align: right; font-variant-numeric: tabular-nums; }
+  input[type=range] { width: 100%; accent-color: #e8e6e1; }
+  #sources { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  button { font: inherit; background: #1b1b1f; color: #e8e6e1; border: 1px solid #2e2e34;
+           border-radius: 999px; padding: 7px 14px; cursor: pointer; }
+  button[aria-pressed=true] { background: #e8e6e1; color: #0b0b0d; border-color: #e8e6e1; }
+  #err { color: #ff8a7a; max-width: 720px; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+  <h1>Pointillist · shader lab</h1>
+  <div id="sources">
+    <button id="useCamera">Webcam</button>
+    <button id="useImage" aria-pressed="true">Photo</button>
+    <button id="useSynthetic">Synthetic</button>
+  </div>
+  <div id="stage"><canvas id="gl" width="900" height="600"></canvas></div>
+  <div id="panel"></div>
+  <div id="err"></div>
+
+<script type="module">
+// Runs the production renderer (src/gl/renderer.js) against a browser WebGL
+// context, so the look can be checked and tuned without a phone in hand.
+import { createRenderer } from '../src/gl/renderer.js'
+import { LOOK_LAB, CONTROLS_LAB } from './lab-config.js'
+
+const canvas = document.getElementById('gl')
+const gl = canvas.getContext('webgl', { preserveDrawingBuffer: true, antialias: false })
+const err = document.getElementById('err')
+
+const state = {
+  cameraTexture: null,
+  dotSize: CONTROLS_LAB.dotSize.value,
+  saturation: CONTROLS_LAB.colour.value,
+  levels: CONTROLS_LAB.palette.value,
+  ...LOOK_LAB,
+  paper: '#FFFFFF',
+  orientation: { rot: 0, flipY: true },
+  mirror: false,
+  texAspect: 1,
+}
+
+const panel = document.getElementById('panel')
+const bind = (key, cfg, fmt) => {
+  const label = document.createElement('label'); label.textContent = cfg.label
+  const input = document.createElement('input')
+  Object.assign(input, { type: 'range', min: cfg.min, max: cfg.max, step: cfg.step, value: cfg.value })
+  const out = document.createElement('output'); out.textContent = fmt(cfg.value)
+  input.addEventListener('input', () => {
+    state[key] = Number(input.value)
+    out.textContent = fmt(Number(input.value))
+  })
+  panel.append(label, input, out)
+}
+bind('dotSize', CONTROLS_LAB.dotSize, (v) => `${v}px`)
+bind('saturation', CONTROLS_LAB.colour, (v) => v.toFixed(2))
+bind('levels', CONTROLS_LAB.palette, (v) => (v > 16 ? '∞' : `${v}`))
+
+// --- sources ---------------------------------------------------------------
+const texture = gl.createTexture()
+gl.bindTexture(gl.TEXTURE_2D, texture)
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+
+let source = null // { el, live }
+function upload() {
+  if (!source) return
+  const { el, live } = source
+  const w = el.videoWidth || el.naturalWidth
+  const h = el.videoHeight || el.naturalHeight
+  if (!w || !h) return
+  state.texAspect = w / h
+  if (live || !state.cameraTexture) {
+    gl.bindTexture(gl.TEXTURE_2D, texture)
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false)
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, el)
+    state.cameraTexture = texture
+  }
+}
+
+const imgBtn = document.getElementById('useImage')
+const camBtn = document.getElementById('useCamera')
+const synthBtn = document.getElementById('useSynthetic')
+function setSource(next, pressed) {
+  source = next
+  state.cameraTexture = null
+  imgBtn.ariaPressed = String(pressed === 'image')
+  camBtn.ariaPressed = String(pressed === 'camera')
+  synthBtn.ariaPressed = String(pressed === 'synthetic')
+}
+
+// A procedural scene with saturated hues and a full tonal ramp — the photo is
+// moodier than most, and this exercises the colour and palette sliders harder.
+function syntheticScene() {
+  const c = document.createElement('canvas')
+  c.width = 900; c.height = 600
+  const x = c.getContext('2d')
+  const sky = x.createLinearGradient(0, 0, 0, 380)
+  sky.addColorStop(0, '#1b4fd8'); sky.addColorStop(0.6, '#56b8f0'); sky.addColorStop(1, '#ffd9a0')
+  x.fillStyle = sky; x.fillRect(0, 0, 900, 400)
+  x.fillStyle = '#fff3c4'; x.beginPath(); x.arc(690, 150, 62, 0, 7); x.fill()
+  x.fillStyle = '#7a3f8c'; x.beginPath()
+  x.moveTo(0, 400); x.lineTo(180, 250); x.lineTo(340, 400); x.closePath(); x.fill()
+  x.fillStyle = '#4a2a63'; x.beginPath()
+  x.moveTo(250, 400); x.lineTo(470, 215); x.lineTo(700, 400); x.closePath(); x.fill()
+  const field = x.createLinearGradient(0, 390, 0, 600)
+  field.addColorStop(0, '#9fc83a'); field.addColorStop(1, '#1f4a14')
+  x.fillStyle = field; x.fillRect(0, 390, 900, 210)
+  const hues = ['#e03b2f', '#f08a2c', '#f5d327', '#2fae6a', '#1f6fe0', '#8b3fd0', '#111111', '#ffffff']
+  hues.forEach((h, i) => { x.fillStyle = h; x.fillRect(40 + i * 100, 470, 78, 90) })
+  c.naturalWidth = c.width; c.naturalHeight = c.height
+  return c
+}
+const synth = syntheticScene()
+synthBtn.addEventListener('click', () => setSource({ el: synth, live: false }, 'synthetic'))
+
+const img = new Image()
+img.crossOrigin = 'anonymous'
+img.src = new URLSearchParams(location.search).get('img') || './test-scene.jpg'
+img.addEventListener('load', () => { if (!source) setSource({ el: img, live: false }, 'image') })
+imgBtn.addEventListener('click', () => setSource({ el: img, live: false }, 'image'))
+
+camBtn.addEventListener('click', async () => {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } })
+    const video = document.createElement('video')
+    video.srcObject = stream; video.playsInline = true; video.muted = true
+    await video.play()
+    setSource({ el: video, live: true }, 'camera')
+  } catch (e) { err.textContent = String(e) }
+})
+
+// --- loop ------------------------------------------------------------------
+let renderer
+try {
+  renderer = createRenderer(gl)
+} catch (e) {
+  err.textContent = String(e && e.message ? e.message : e)
+}
+
+function frame() {
+  if (renderer) {
+    upload()
+    try { renderer.render(state) } catch (e) { err.textContent = String(e); return }
+  }
+  requestAnimationFrame(frame)
+}
+frame()
+
+// Headless screenshots and console tinkering reach in through these.
+window.__labReady = () => Boolean(state.cameraTexture && renderer)
+window.__labState = state
+</script>
+</body>
+</html>

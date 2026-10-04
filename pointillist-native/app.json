@@ -1,0 +1,42 @@
+{
+  "expo": {
+    "name": "Pointillist",
+    "slug": "pointillist-native",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0A0A0B",
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "Pointillist turns the live camera into a painting of dots. Frames are processed on-device and never uploaded.",
+        "NSPhotoLibraryAddUsageDescription": "Save your pointillist photos to your camera roll."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#FFFFFF",
+        "foregroundImage": "./assets/android-icon-foreground.png"
+      },
+      "permissions": ["android.permission.CAMERA"]
+    },
+    "web": { "favicon": "./assets/favicon.png" },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Pointillist turns the live camera into a painting of dots. Frames are processed on-device and never uploaded."
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "savePhotosPermission": "Save your pointillist photos to your camera roll.",
+          "photosPermission": "Save your pointillist photos to your camera roll.",
+          "isAccessMediaLocationEnabled": false
+        }
+      ]
+    ]
+  }
+}
