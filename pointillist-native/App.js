@@ -86,7 +86,12 @@ function Studio() {
   const draw = useCallback(() => {
     const gl = glRef.current
     const renderer = rendererRef.current
-    if (!gl || !renderer || !textureRef.current) return null
+    if (!gl || !renderer) return null
+    if (!textureRef.current) {
+      renderer.clear(stateRef.current.paper)
+      gl.endFrameEXP()
+      return null
+    }
     const grid = renderer.render({ ...stateRef.current, cameraTexture: textureRef.current })
     gl.endFrameEXP()
     return grid
@@ -183,6 +188,12 @@ function Studio() {
     }
   }, [draw])
 
+  const discard = useCallback(() => {
+    setShot(null)
+    setSaveStatus('idle')
+    pausedRef.current = false
+  }, [])
+
   const save = useCallback(async () => {
     setSaveStatus('saving')
     try {
@@ -196,17 +207,13 @@ function Studio() {
       await MediaLibrary.Asset.create(shot.localUri || shot.uri)
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {})
       setSaveStatus('saved')
+      // Back to the viewfinder on its own — a capture should never dead-end.
+      setTimeout(discard, 850)
     } catch (e) {
       setSaveStatus('idle')
       Alert.alert('Could not save', e.message)
     }
-  }, [libPerm, requestLibPerm, shot])
-
-  const discard = useCallback(() => {
-    setShot(null)
-    setSaveStatus('idle')
-    pausedRef.current = false
-  }, [])
+  }, [discard, libPerm, requestLibPerm, shot])
 
   // --- dev panel -----------------------------------------------------------
 
@@ -266,20 +273,22 @@ function Studio() {
 
   return (
     <View style={styles.root}>
-      {/* Feeds the GL texture. Covered by the GLView, but it has to be laid out
-          at full size for the camera session to run at preview resolution. */}
-      <CameraView
-        ref={cameraRef}
-        style={StyleSheet.absoluteFill}
-        facing={facing}
-        onCameraReady={() => setCameraReady(true)}
-      />
-      <GLView ref={glViewRef} style={StyleSheet.absoluteFill} onContextCreate={onContextCreate} />
+      {/* The camera only exists to feed the GL texture — its own preview would
+          otherwise composite above the GLView and hide the effect entirely.
+          It stays laid out at full size so the session runs at preview
+          resolution, but is made invisible and pushed explicitly behind. */}
+      <View style={styles.cameraHost} pointerEvents="none">
+        <CameraView
+          ref={cameraRef}
+          style={StyleSheet.absoluteFill}
+          facing={facing}
+          onCameraReady={() => setCameraReady(true)}
+        />
+      </View>
+      <GLView ref={glViewRef} style={styles.canvas} onContextCreate={onContextCreate} />
 
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
-        <Pressable onLongPress={openDev} delayLongPress={600} hitSlop={10}>
-          <Text style={styles.title}>Pointillist</Text>
-        </Pressable>
+        {textureReady ? <View /> : <Text style={styles.status}>Waking the camera…</Text>}
         <View style={styles.headerActions}>
           <Pressable
             onPress={() => {
@@ -287,6 +296,8 @@ function Studio() {
               setPaperIndex(next)
               stateRef.current.paper = PAPERS[next].colour
             }}
+            onLongPress={openDev}
+            delayLongPress={600}
             hitSlop={8}
             style={styles.pill}
           >
@@ -346,6 +357,7 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#000' },
   header: {
     position: 'absolute',
+    zIndex: 2,
     top: 0,
     left: 0,
     right: 0,
@@ -355,13 +367,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  title: {
+  cameraHost: { ...StyleSheet.absoluteFillObject, opacity: 0, zIndex: 0 },
+  canvas: { ...StyleSheet.absoluteFillObject, zIndex: 1 },
+  status: {
     color: '#fff',
     fontSize: 11,
-    letterSpacing: 3.4,
-    textTransform: 'uppercase',
-    textShadowColor: 'rgba(0,0,0,0.5)',
-    textShadowRadius: 6,
+    letterSpacing: 1.6,
+    backgroundColor: 'rgba(0,0,0,0.42)',
+    borderRadius: 999,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    overflow: 'hidden',
   },
   headerActions: { flexDirection: 'row', gap: 8 },
   pill: {
@@ -377,6 +393,7 @@ const styles = StyleSheet.create({
   pillText: { color: '#fff', fontSize: 11, letterSpacing: 0.8 },
   dock: {
     position: 'absolute',
+    zIndex: 2,
     left: 0,
     right: 0,
     bottom: 0,
@@ -389,6 +406,7 @@ const styles = StyleSheet.create({
   shutterRow: { alignItems: 'center', paddingTop: 4 },
   errorBox: {
     position: 'absolute',
+    zIndex: 3,
     left: 20,
     right: 20,
     top: '45%',

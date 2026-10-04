@@ -130,6 +130,17 @@ export function createRenderer(gl) {
     return { cols, rows }
   }
 
+  // Used when there is no camera texture yet. Presenting a flat sheet of paper
+  // rather than nothing keeps the GL surface opaque, so a missing camera reads
+  // as blank paper instead of silently showing whatever sits behind the view.
+  function clear(paper) {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+    gl.viewport(0, 0, width, height)
+    const [r, g, b] = hexToRgb(paper)
+    gl.clearColor(r, g, b, 1)
+    gl.clear(gl.COLOR_BUFFER_BIT)
+  }
+
   function dispose() {
     gl.deleteFramebuffer(cellTarget)
     gl.deleteTexture(cellTexture)
@@ -138,5 +149,5 @@ export function createRenderer(gl) {
     gl.deleteProgram(dotPass.program)
   }
 
-  return { render, dispose, width, height, gridMax }
+  return { render, clear, dispose, width, height, gridMax }
 }

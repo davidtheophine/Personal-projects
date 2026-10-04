@@ -20,7 +20,7 @@ npx expo start      # scan the QR code with Expo Go (add --tunnel if off Wi-Fi)
 | **Palette** | Quantises each channel to 2–16 levels, the way a painter works from a limited set of mixed pigments. Hard right is continuous. |
 | **Paper** (top right) | The colour showing through the gaps — Snow, Paper, Ink, Slate. |
 | **Flip** | Front / back camera. |
-| Shutter | Freezes the frame, then offers **Save** (to the camera roll) or **Retake**. |
+| Shutter | Freezes the frame, then offers **Save to camera roll** or **Retake**. Saving returns you to the viewfinder; the cross top-right discards. |
 
 Everything renders on-device. Nothing is uploaded; photos leave the app only when you save them.
 
@@ -63,6 +63,6 @@ shader-lab/                   browser harness running the same renderer
 ## If the preview comes up sideways
 
 The camera texture's orientation differs by platform and cannot be queried from GL. Long-press
-the **Pointillist** title to open the dev panel, tap *Orientation* until it looks right, and
-paste the printed values into `DEFAULT_ORIENTATION` / `CAMERA_TEXTURE_ASPECT` in
+the **paper chip** (top right) to open the dev panel, tap *Orientation* until it looks right,
+and paste the printed values into `DEFAULT_ORIENTATION` / `CAMERA_TEXTURE_ASPECT` in
 `src/config.js`. The panel also toggles snapshot flip, grid stagger, and shows dot count and fps.

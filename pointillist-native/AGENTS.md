@@ -47,8 +47,8 @@ idiomatic React Native import paths.
 
 The camera texture's rotation and mirroring cannot be queried from GL and differ by platform.
 Rather than guess, `src/lib/camera-transform.js` enumerates every rotation/flip combination and
-the in-app dev panel (long-press the title) cycles them, printing the exact `src/config.js` line
-to paste back. If the preview comes up sideways on a device, that is the two-tap fix — not a bug
+the in-app dev panel (long-press the paper chip) cycles them, printing the exact `src/config.js`
+line to paste back. If the preview comes up sideways on a device, that is the two-tap fix — not a bug
 to debug in the shader.
 
 ## Verifying
@@ -57,3 +57,15 @@ to debug in the shader.
 - Visuals are verified in `shader-lab/` first, then on-device with `npx expo start` and the QR
   code (add `--tunnel` if you are not on the same Wi-Fi).
 - GL does not work under remote JS debugging. If the screen is black, check that first.
+
+## The camera view must stay invisible
+
+`CameraView` exists only to feed the GL texture. Left visible, its preview composites *above*
+the `GLView` on iOS regardless of sibling order, and the symptom is nasty to read: the viewfinder
+shows a plain camera feed while captures come out correctly pointillist, because the snapshot
+reads the GL framebuffer rather than the screen. It lives in an `opacity: 0` host with an
+explicit `zIndex` below the canvas. Do not "simplify" that away.
+
+For the same reason `draw()` clears to the paper colour and still calls `endFrameEXP()` when
+there is no camera texture yet: an opaque surface means a missing camera reads as blank paper,
+not as a working camera app.
