@@ -4,3 +4,7 @@ dist/
 web-build/
 *.log
 .DS_Store
+
+# Expo Go only — `expo prebuild` / `expo run:*` output is not part of this project.
+/ios
+/android
