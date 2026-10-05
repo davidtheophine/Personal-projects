@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Alert, PixelRatio, Pressable, StyleSheet, Text, View } from 'react-native'
+import {
+  Alert,
+  Dimensions,
+  PixelRatio,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+} from 'react-native'
 import { CameraView, useCameraPermissions } from 'expo-camera'
 import { GLView } from 'expo-gl'
 import * as Haptics from 'expo-haptics'
@@ -28,8 +37,14 @@ const formatSize = (v) => `${v.toFixed(1)}pt`
 const formatColour = (v) => (v < 0.02 ? 'mono' : v.toFixed(2))
 const formatPalette = (v) => (v > 16 ? 'full' : `${Math.round(v)}`)
 
+const toSurface = ({ width, height }) => ({
+  width: PixelRatio.getPixelSizeForLayoutSize(width || 0),
+  height: PixelRatio.getPixelSizeForLayoutSize(height || 0),
+})
+
 function Studio() {
   const insets = useSafeAreaInsets()
+  const window = useWindowDimensions()
   const [camPerm, requestCamPerm] = useCameraPermissions()
   const [libPerm, requestLibPerm] = MediaLibrary.usePermissions({
     writeOnly: true,
@@ -43,9 +58,11 @@ function Studio() {
   const textureRef = useRef(null)
   const rafRef = useRef(null)
   const pausedRef = useRef(false)
-  // Device-pixel size of the GL surface, from React Native layout. Kept here so
-  // it survives a context (and therefore renderer) recreation.
-  const surfaceRef = useRef({ width: 0, height: 0 })
+  // Device-pixel size of the GL surface. The canvas fills the window, so the
+  // window is a reliable source that is available on the very first render —
+  // `onLayout` only ever refines it. Kept in a ref so it survives a context
+  // (and therefore renderer) recreation.
+  const surfaceRef = useRef(toSurface(Dimensions.get('window')))
 
   // Everything the render loop reads lives in a ref, so dragging a slider never
   // re-renders React — it just changes what the next frame draws.
@@ -71,8 +88,8 @@ function Studio() {
   const [saveStatus, setSaveStatus] = useState('idle')
   const [error, setError] = useState(null)
 
-  const [status, setStatus] = useState('Starting…')
-  const statusRef = useRef('Starting…')
+  const [status, setStatus] = useState('starting')
+  const statusRef = useRef('starting')
   const [dev, setDev] = useState(null) // null = hidden
   const devOpenRef = useRef(false)
   const [stats, setStats] = useState({ cols: 0, rows: 0, fps: 0 })
@@ -160,12 +177,14 @@ function Studio() {
       if (pausedRef.current) return
       const grid = draw()
 
-      const laidOut = (rendererRef.current?.size().width ?? 0) > 0
-      const next = !laidOut
-        ? 'Sizing the canvas…'
-        : !textureRef.current
-          ? 'Waking the camera…'
-          : null
+      // Numbers, not adjectives — this chip is how a broken frame gets diagnosed.
+      const surface = rendererRef.current?.size() ?? { width: 0, height: 0 }
+      const next = [
+        `gl ${rendererRef.current ? 'ok' : '--'}`,
+        `cam ${textureRef.current ? 'ok' : '--'}`,
+        `${surface.width}x${surface.height}`,
+        grid ? `${grid.cols}x${grid.rows} dots` : 'no dots',
+      ].join(' · ')
       if (next !== statusRef.current) {
         statusRef.current = next
         setStatus(next)
@@ -189,18 +208,23 @@ function Studio() {
 
   useEffect(() => () => rendererRef.current?.dispose(), [])
 
-  // expo-gl cannot tell us how big its own surface is, so React Native layout is
-  // the only reliable source. Fires before or after `onContextCreate` depending
-  // on the run, hence the ref.
-  const onCanvasLayout = useCallback((e) => {
-    const { width, height } = e.nativeEvent.layout
-    const size = {
-      width: PixelRatio.getPixelSizeForLayoutSize(width),
-      height: PixelRatio.getPixelSizeForLayoutSize(height),
-    }
+  // expo-gl cannot report its own surface size, so we tell it. Window dimensions
+  // land immediately and survive rotation; `onLayout` refines them if the view
+  // ever stops being exactly full screen.
+  const applySize = useCallback((size) => {
+    if (!(size.width > 0 && size.height > 0)) return
     surfaceRef.current = size
     rendererRef.current?.setSize(size.width, size.height)
   }, [])
+
+  useEffect(() => {
+    applySize(toSurface(window))
+  }, [applySize, window])
+
+  const onCanvasLayout = useCallback(
+    (e) => applySize(toSurface(e.nativeEvent.layout)),
+    [applySize],
+  )
 
   // --- capture -------------------------------------------------------------
 
@@ -314,10 +338,10 @@ function Studio() {
 
   return (
     <View style={styles.root}>
-      {/* The camera only exists to feed the GL texture — its own preview would
-          otherwise composite above the GLView and hide the effect entirely.
-          It stays laid out at full size so the session runs at preview
-          resolution, but is made invisible and pushed explicitly behind. */}
+      {/* The camera only exists to feed the GL texture. It is left completely
+          vanilla — full size, fully opaque — because anything clever here risks
+          the capture session not starting, and it is simply covered: the canvas
+          sits above it and always presents an opaque frame. */}
       <View style={styles.cameraHost} pointerEvents="none">
         <CameraView
           ref={cameraRef}
@@ -413,7 +437,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  cameraHost: { ...StyleSheet.absoluteFillObject, opacity: 0, zIndex: 0 },
+  cameraHost: { ...StyleSheet.absoluteFillObject, zIndex: 0 },
   canvas: { ...StyleSheet.absoluteFillObject, zIndex: 1 },
   status: {
     color: '#fff',
