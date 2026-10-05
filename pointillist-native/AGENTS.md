@@ -101,3 +101,16 @@ colours — the pipeline looks perfectly healthy while nothing ever reaches the 
 
 Plain document order already stacks this tree correctly: camera, canvas, header, dock, review.
 Leave it that way.
+
+## Orientation in Expo Go
+
+`app.json`'s `orientation` field does nothing in Expo Go — the interface stays locked to portrait
+unless `ScreenOrientation.unlockAsync()` is called at runtime. Until it is, `getOrientationAsync`
+always reports `PORTRAIT_UP`, so any rotation correction keyed off it silently never fires, and
+two opposite mappings produce identical behaviour. That cost a round of debugging; if rotation
+work ever looks inert, check the unlock first.
+
+The texture itself never rotates: iOS forces `AVCaptureVideoOrientationPortrait` (and
+`videoMirrored: YES`) on every sample buffer in `EXGLCameraObject`, so the device angle has to be
+folded into the sampling transform. The in-app **⟳** control adds a manual quarter turn on top,
+because the handedness of that composition is not observable from JS.

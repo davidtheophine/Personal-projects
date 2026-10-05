@@ -31,6 +31,7 @@ npm start       # prints a QR code — scan it with Expo Go
 | **Colour** | Saturation, 0–2. At `0` you get graphite; at `1` true colour; above that the hues push past life. |
 | **Palette** | Quantises each channel to 2–16 levels, the way a painter works from a limited set of mixed pigments. Hard right is continuous. |
 | **Paper** (top right) | The colour showing through the gaps — Snow, Paper, Ink, Slate. |
+| **⟳** | Turns the image a quarter turn, for when auto-rotation lands wrong. |
 | **Flip** | Front / back camera. |
 | Chevron above the sliders | Collapses the panel down to just the shutter, for composing without it in the way. |
 | Colour readout | The sampled colour at the centre of frame, as a swatch and its RGB. |
@@ -38,9 +39,12 @@ npm start       # prints a QR code — scan it with Expo Go
 
 Everything renders on-device. Nothing is uploaded; photos leave the app only when you save them.
 
-Rotate the phone and the frame follows. iOS pins the capture connection to portrait (see
-`EXGLCameraObject` in expo-gl), so the texture never rotates on its own — the device orientation
-is folded into the sampling transform instead.
+Rotate the phone and the frame follows. Two things make that work: Expo Go ignores `app.json`'s
+`orientation`, so the app calls `ScreenOrientation.unlockAsync()` at startup to let the interface
+turn at all; and iOS pins the capture connection to portrait (see `EXGLCameraObject` in expo-gl),
+so the texture never rotates on its own and the device orientation is folded into the sampling
+transform. If a rotation still lands wrong, the **⟳** button turns the image a quarter turn and
+the offset sticks for the session.
 
 ## The slider is a placeholder
 

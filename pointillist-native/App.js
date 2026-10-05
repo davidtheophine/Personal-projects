@@ -30,6 +30,7 @@ import {
 import { createRenderer } from './src/gl/renderer'
 import { ORIENTATIONS } from './src/lib/camera-transform'
 import DevPanel from './src/components/DevPanel'
+import { Glass, GlassButton, GlassLabel } from './src/components/Glass'
 import PointSlider from './src/components/PointSlider'
 import ReviewOverlay from './src/components/ReviewOverlay'
 import ShutterButton from './src/components/ShutterButton'
@@ -110,12 +111,14 @@ function Studio() {
     orientation: ORIENTATIONS[DEFAULT_ORIENTATION],
     orientationIndex: DEFAULT_ORIENTATION,
     deviceRotation: 0,
+    rotationOffset: 0,
     snapshotFlip: SNAPSHOT_FLIP,
     ...LOOK,
   })
 
   const [facing, setFacing] = useState('back')
   const [controlsOpen, setControlsOpen] = useState(true)
+  const [rotationOffset, setRotationOffset] = useState(0)
   const [paperIndex, setPaperIndex] = useState(0)
   const [cameraReady, setCameraReady] = useState(false)
   const [textureReady, setTextureReady] = useState(false)
@@ -142,11 +145,31 @@ function Studio() {
     stateRef.current.mirror = facing === 'front'
   }, [facing])
 
-  const applyOrientation = useCallback((deviceDegrees) => {
-    const base = ORIENTATIONS[stateRef.current.orientationIndex]
-    stateRef.current.deviceRotation = deviceDegrees
-    stateRef.current.orientation = { ...base, rot: (base.rot + deviceDegrees) % 360 }
+  // Auto rotation plus a manual offset. The offset exists because the mapping
+  // from interface orientation to texture rotation depends on handedness we
+  // cannot observe from JS; one tap corrects it and it sticks for the session.
+  const composeOrientation = useCallback(() => {
+    const { orientationIndex, deviceRotation, rotationOffset } = stateRef.current
+    const base = ORIENTATIONS[orientationIndex]
+    stateRef.current.orientation = {
+      ...base,
+      rot: (base.rot + deviceRotation + rotationOffset + 360) % 360,
+    }
   }, [])
+
+  const applyOrientation = useCallback(
+    (deviceDegrees) => {
+      stateRef.current.deviceRotation = deviceDegrees
+      composeOrientation()
+    },
+    [composeOrientation],
+  )
+
+  const nudgeRotation = useCallback(() => {
+    stateRef.current.rotationOffset = (stateRef.current.rotationOffset + 90) % 360
+    setRotationOffset(stateRef.current.rotationOffset)
+    composeOrientation()
+  }, [composeOrientation])
 
   useEffect(() => {
     let cancelled = false
@@ -154,7 +177,15 @@ function Studio() {
       if (cancelled) return
       applyOrientation(DEVICE_ROTATION[orientation] ?? 0)
     }
-    ScreenOrientation.getOrientationAsync().then(handle).catch(() => {})
+    // Expo Go ignores app.json's `orientation`, so without this the interface
+    // stays pinned to portrait: the screen never turns, getOrientationAsync
+    // always reports PORTRAIT_UP, and no correction is ever applied. The camera
+    // still turns with the phone, so the image appears to rotate against you.
+    ScreenOrientation.unlockAsync()
+      .catch(() => {})
+      .then(() => ScreenOrientation.getOrientationAsync())
+      .then(handle)
+      .catch(() => {})
     const sub = ScreenOrientation.addOrientationChangeListener((e) =>
       handle(e.orientationInfo.orientation),
     )
@@ -375,14 +406,14 @@ function Studio() {
     setDev((prev) => {
       const next = { ...prev, ...patch }
       stateRef.current.orientationIndex = next.orientationIndex
-      applyOrientation(stateRef.current.deviceRotation)
+      composeOrientation()
       stateRef.current.texAspect = next.texAspect
       stateRef.current.snapshotFlip = next.snapshotFlip
       stateRef.current.stagger = next.stagger
       canvasTestRef.current = next.canvasTest
       return next
     })
-  }, [applyOrientation])
+  }, [composeOrientation])
 
   // --- render --------------------------------------------------------------
 
@@ -427,7 +458,7 @@ function Studio() {
 
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
         <View style={styles.headerActions}>
-          <Pressable
+          <GlassButton
             onPress={() => {
               const next = (paperIndex + 1) % PAPERS.length
               setPaperIndex(next)
@@ -435,25 +466,33 @@ function Studio() {
             }}
             onLongPress={openDev}
             delayLongPress={600}
-            hitSlop={8}
             style={styles.pill}
+            accessibilityLabel={`Paper: ${paper.name}`}
           >
             <View style={[styles.swatch, { backgroundColor: paper.colour }]} />
-            <Text style={styles.pillText}>{paper.name}</Text>
-          </Pressable>
-          <Pressable
-            onPress={() => setFacing((f) => (f === 'back' ? 'front' : 'back'))}
-            hitSlop={8}
+            <GlassLabel>{paper.name}</GlassLabel>
+          </GlassButton>
+          <GlassButton
+            onPress={nudgeRotation}
             style={styles.pill}
+            accessibilityLabel="Rotate the image a quarter turn"
           >
-            <Text style={styles.pillText}>Flip</Text>
-          </Pressable>
+            <Text style={styles.glyph}>⟳</Text>
+            {rotationOffset ? <GlassLabel>{rotationOffset}°</GlassLabel> : null}
+          </GlassButton>
+          <GlassButton
+            onPress={() => setFacing((f) => (f === 'back' ? 'front' : 'back'))}
+            style={styles.pill}
+            accessibilityLabel="Switch camera"
+          >
+            <GlassLabel>Flip</GlassLabel>
+          </GlassButton>
         </View>
         {centre ? (
-          <View style={styles.readout}>
+          <Glass style={styles.readout}>
             <View style={[styles.readoutSwatch, { backgroundColor: `rgb(${centre.join(',')})` }]} />
             <Text style={styles.readoutText}>{centre.join(' · ')}</Text>
-          </View>
+          </Glass>
         ) : null}
       </View>
 
@@ -466,7 +505,6 @@ function Studio() {
       <View
         style={[
           styles.dock,
-          controlsOpen && styles.dockOpen,
           { paddingBottom: insets.bottom + 18 },
           shot && styles.hidden,
         ]}
@@ -476,22 +514,20 @@ function Studio() {
           <DevPanel state={dev} set={setDevValue} stats={stats} onClose={closeDev} />
         ) : null}
 
-        <Pressable
+        <GlassButton
           onPress={() => setControlsOpen((open) => !open)}
-          hitSlop={14}
           style={styles.handle}
-          accessibilityRole="button"
           accessibilityLabel={controlsOpen ? 'Hide controls' : 'Show controls'}
         >
           <Text style={styles.handleGlyph}>{controlsOpen ? '⌄' : '⌃'}</Text>
-        </Pressable>
+        </GlassButton>
 
         {controlsOpen ? (
-          <View style={styles.sliders}>
+          <Glass radius={28} style={styles.sliders}>
             <PointSlider {...CONTROLS.dotSize} onChange={setDotSize} format={formatSize} />
             <PointSlider {...CONTROLS.colour} onChange={setSaturation} format={formatColour} />
             <PointSlider {...CONTROLS.palette} onChange={setLevels} format={formatPalette} />
-          </View>
+          </Glass>
         ) : null}
 
         <View style={styles.shutterRow}>
@@ -539,10 +575,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 7,
-    borderRadius: 999,
-    paddingVertical: 5,
-    paddingHorizontal: 10,
-    backgroundColor: 'rgba(0,0,0,0.42)',
+    paddingVertical: 6,
+    paddingHorizontal: 11,
   },
   readoutSwatch: {
     width: 12,
@@ -562,13 +596,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 7,
-    borderRadius: 999,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    backgroundColor: 'rgba(0,0,0,0.42)',
+    paddingVertical: 9,
+    paddingHorizontal: 14,
   },
+  glyph: { color: '#fff', fontSize: 14, lineHeight: 17 },
   swatch: { width: 11, height: 11, borderRadius: 6, borderWidth: 1, borderColor: 'rgba(255,255,255,0.45)' },
-  pillText: { color: '#fff', fontSize: 11, letterSpacing: 0.8 },
   dock: {
     position: 'absolute',
     left: 0,
@@ -578,17 +610,10 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     gap: 12,
   },
-  dockOpen: { backgroundColor: 'rgba(0,0,0,0.42)' },
   hidden: { opacity: 0 },
-  handle: {
-    alignSelf: 'center',
-    paddingHorizontal: 26,
-    paddingVertical: 2,
-    borderRadius: 999,
-    backgroundColor: 'rgba(0,0,0,0.38)',
-  },
+  handle: { alignSelf: 'center', paddingHorizontal: 28, paddingVertical: 3 },
   handleGlyph: { color: '#fff', opacity: 0.8, fontSize: 17, lineHeight: 21 },
-  sliders: { gap: 2 },
+  sliders: { paddingHorizontal: 18, paddingVertical: 10 },
   shutterRow: { alignItems: 'center', paddingTop: 4 },
   errorBox: {
     position: 'absolute',

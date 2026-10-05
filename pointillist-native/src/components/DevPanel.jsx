@@ -1,4 +1,6 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native'
+import { StyleSheet, Text, View } from 'react-native'
+
+import { Glass, GlassButton } from './Glass'
 import { ORIENTATIONS } from '../lib/camera-transform'
 
 const ASPECTS = [
@@ -9,9 +11,9 @@ const ASPECTS = [
 ]
 
 const Chip = ({ label, onPress }) => (
-  <Pressable onPress={onPress} hitSlop={6} style={styles.chip}>
+  <GlassButton onPress={onPress} style={styles.chip} accessibilityLabel={label}>
     <Text style={styles.chipText}>{label}</Text>
-  </Pressable>
+  </GlassButton>
 )
 
 /**
@@ -23,7 +25,7 @@ export default function DevPanel({ state, set, stats, onClose }) {
   const aspect = ASPECTS.find((a) => Math.abs(a.value - state.texAspect) < 0.001)
 
   return (
-    <View style={styles.root}>
+    <Glass radius={20} style={styles.root}>
       <View style={styles.row}>
         <Chip
           label={`Orientation ${state.orientationIndex}`}
@@ -48,14 +50,14 @@ export default function DevPanel({ state, set, stats, onClose }) {
       <Text style={styles.note}>
         {stats.cols}×{stats.rows} dots · {stats.fps} fps
       </Text>
-    </View>
+    </Glass>
   )
 }
 
 const styles = StyleSheet.create({
-  root: { gap: 7, paddingHorizontal: 18, paddingVertical: 12, backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 16 },
+  root: { gap: 7, paddingHorizontal: 16, paddingVertical: 12 },
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
-  chip: { borderRadius: 999, borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)', paddingVertical: 5, paddingHorizontal: 11 },
+  chip: { paddingVertical: 7, paddingHorizontal: 12 },
   chipText: { color: '#fff', fontSize: 11, letterSpacing: 0.3 },
   note: { color: '#fff', opacity: 0.5, fontSize: 10, fontVariant: ['tabular-nums'] },
 })

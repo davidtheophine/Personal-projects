@@ -11,6 +11,8 @@ import {
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
+import { Glass } from './Glass'
+
 const BORDER = 13 // white margin on three sides
 const CHIN = 54 // the thick bottom edge that makes it read as a Polaroid
 
@@ -91,8 +93,10 @@ export default function ReviewOverlay({ shot, status, error, onSave, onDiscard }
           </Pressable>
         )}
 
-        <Pressable onPress={onDiscard} hitSlop={12} style={styles.retake}>
-          <Text style={styles.retakeText}>Retake</Text>
+        <Pressable onPress={onDiscard} hitSlop={12}>
+          <Glass style={styles.retake}>
+            <Text style={styles.retakeText}>Retake</Text>
+          </Glass>
         </Pressable>
       </View>
     </View>
@@ -138,7 +142,7 @@ const styles = StyleSheet.create({
   saveDone: { backgroundColor: 'rgba(255,255,255,0.16)' },
   saveText: { color: '#0a0a0b', fontSize: 15, fontWeight: '600', letterSpacing: 0.2 },
   saveTextDone: { color: '#fff', fontWeight: '500' },
-  retake: { paddingVertical: 4, paddingHorizontal: 16 },
+  retake: { paddingVertical: 11, paddingHorizontal: 26 },
   retakeText: { color: '#fff', opacity: 0.7, fontSize: 14, letterSpacing: 0.3 },
   error: { color: '#ff9c8d', fontSize: 13, lineHeight: 18, textAlign: 'center' },
 })

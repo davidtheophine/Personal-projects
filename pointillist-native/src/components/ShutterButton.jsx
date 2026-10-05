@@ -1,5 +1,7 @@
-import { Animated, Pressable, StyleSheet, View } from 'react-native'
+import { Animated, Pressable, StyleSheet } from 'react-native'
 import { useRef } from 'react'
+
+import { Glass } from './Glass'
 
 export default function ShutterButton({ onPress, busy }) {
   const press = useRef(new Animated.Value(0)).current
@@ -16,27 +18,19 @@ export default function ShutterButton({ onPress, busy }) {
       accessibilityRole="button"
       accessibilityLabel="Take a pointillist photo"
     >
-      <View style={styles.ring}>
+      <Glass radius={37} style={styles.ring}>
         <Animated.View
           style={[
             styles.core,
             { opacity: busy ? 0.4 : 1, transform: [{ scale: press.interpolate({ inputRange: [0, 1], outputRange: [1, 0.86] }) }] },
           ]}
         />
-      </View>
+      </Glass>
     </Pressable>
   )
 }
 
 const styles = StyleSheet.create({
-  ring: {
-    width: 74,
-    height: 74,
-    borderRadius: 37,
-    borderWidth: 3,
-    borderColor: 'rgba(255,255,255,0.9)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  ring: { width: 74, height: 74, alignItems: 'center', justifyContent: 'center' },
   core: { width: 58, height: 58, borderRadius: 29, backgroundColor: '#fff' },
 })
