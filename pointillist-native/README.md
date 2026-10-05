@@ -66,3 +66,42 @@ The camera texture's orientation differs by platform and cannot be queried from 
 the **paper chip** (top right) to open the dev panel, tap *Orientation* until it looks right,
 and paste the printed values into `DEFAULT_ORIENTATION` / `CAMERA_TEXTURE_ASPECT` in
 `src/config.js`. The panel also toggles snapshot flip, grid stagger, and shows dot count and fps.
+
+## Running it on another machine
+
+The code lives on the `pointillist-camera-app` branch of
+[davidtheophine/Personal-projects](https://github.com/davidtheophine/Personal-projects). You need
+Node and the **Expo Go** app on your phone — nothing else. No Xcode, no Android Studio.
+
+```bash
+git clone https://github.com/davidtheophine/Personal-projects.git
+cd Personal-projects
+git checkout pointillist-camera-app
+cd pointillist-native
+npm install
+npx expo start
+```
+
+Scan the QR code with the iOS camera app, or from inside Expo Go on Android. The phone and the
+computer have to be on the same Wi-Fi; if they are not, use `npx expo start --tunnel`.
+
+`npm install` is only needed the first time, and after anyone changes `package.json`.
+
+## Saving your work back
+
+```bash
+git pull                      # get anyone else's changes first
+git add -A                    # stage everything you changed
+git commit -m "what you did"  # record it locally
+git push                      # send it to GitHub
+```
+
+`git status` shows what has changed, `git log --oneline` shows recent commits. If `git push`
+complains that the branch has no upstream, it will print the exact command to run — copy it.
+
+## Do not run `expo run`
+
+`npx expo run:ios` / `run:android` compile a **native** app. They need Xcode or Android Studio
+plus CocoaPods, they take minutes, and they generate `ios/` and `android/` directories while
+rewriting `package.json` and `app.json`. This project is built for Expo Go specifically so none
+of that is necessary. The only command you need is `npx expo start`.
