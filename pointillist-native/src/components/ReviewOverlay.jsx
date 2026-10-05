@@ -56,7 +56,7 @@ export default function ReviewOverlay({ shot, status, onSave, onDiscard }) {
 }
 
 const styles = StyleSheet.create({
-  root: { ...StyleSheet.absoluteFillObject, zIndex: 4, backgroundColor: '#000' },
+  root: { ...StyleSheet.absoluteFillObject, backgroundColor: '#000' },
   close: {
     position: 'absolute',
     right: 18,

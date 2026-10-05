@@ -86,3 +86,18 @@ So the surface size is pushed in from React Native layout: `onLayout` on the `GL
 `PixelRatio.getPixelSizeForLayoutSize`, into `renderer.setSize()`. It is held in a ref because
 layout and context creation race, and because a context recreation builds a fresh renderer that
 needs the size again. Capture passes an explicit `rect`.
+
+## Never put `zIndex` in the view tree around the GLView
+
+React Native implements `zIndex` on iOS by reordering subviews, which calls `removeFromSuperview`.
+`expo-gl`'s `GLView.removeFromSuperview` **destroys the GL context** (`GLView.swift`), and
+`glContextWillDestroy` runs `deleteViewBuffers()`, zeroing `viewFramebuffer` and `msaaFramebuffer`.
+`glContextGetDefaultFramebuffer()` returns `msaaFramebuffer`, so every later
+`bindFramebuffer(FRAMEBUFFER, null)` targets a deleted object and `drawGL` presents nothing.
+
+The symptom is deceptive and cost several rounds to find: framebuffers we create ourselves keep
+working, so the offscreen cell pass still renders and `readPixels` still returns live camera
+colours — the pipeline looks perfectly healthy while nothing ever reaches the screen.
+
+Plain document order already stacks this tree correctly: camera, canvas, header, dock, review.
+Leave it that way.

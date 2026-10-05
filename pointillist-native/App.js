@@ -345,27 +345,27 @@ function Studio() {
 
   return (
     <View style={styles.root}>
-      {/* The camera only exists to feed the GL texture. It is left completely
-          vanilla — full size, fully opaque — because anything clever here risks
-          the capture session not starting, and it is simply covered: the canvas
-          sits above it and always presents an opaque frame. */}
-      <View style={styles.cameraHost} pointerEvents="none">
-        <CameraView
-          ref={cameraRef}
-          style={StyleSheet.absoluteFill}
-          facing={facing}
-          onCameraReady={() => setCameraReady(true)}
-        />
-      </View>
+      {/* Order matters and `zIndex` must not be used anywhere in this tree.
+          React Native implements zIndex on iOS by reordering subviews, which
+          calls `removeFromSuperview` — and expo-gl's GLView destroys its GL
+          context there, deleting the framebuffer it presents from. The symptom
+          is vicious: our own offscreen pass keeps working, so the pipeline
+          looks healthy while nothing ever reaches the screen. Plain document
+          order already stacks these correctly. */}
+      <CameraView
+        ref={cameraRef}
+        style={StyleSheet.absoluteFill}
+        facing={facing}
+        onCameraReady={() => setCameraReady(true)}
+      />
       <GLView
         ref={glViewRef}
-        style={styles.canvas}
+        style={StyleSheet.absoluteFill}
         onLayout={onCanvasLayout}
         onContextCreate={onContextCreate}
       />
 
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
-        {status ? <Text style={styles.status}>{status}</Text> : <View />}
         <View style={styles.headerActions}>
           <Pressable
             onPress={() => {
@@ -389,6 +389,7 @@ function Studio() {
             <Text style={styles.pillText}>Flip</Text>
           </Pressable>
         </View>
+        {status ? <Text style={styles.status}>{status}</Text> : null}
       </View>
 
       {error ? (
@@ -434,29 +435,25 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#000' },
   header: {
     position: 'absolute',
-    zIndex: 2,
     top: 0,
     left: 0,
     right: 0,
     paddingHorizontal: 20,
     paddingBottom: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: 8,
   },
-  cameraHost: { ...StyleSheet.absoluteFillObject, zIndex: 0 },
-  canvas: { ...StyleSheet.absoluteFillObject, zIndex: 1 },
+  headerActions: { flexDirection: 'row', gap: 8, justifyContent: 'flex-end' },
   status: {
     color: '#fff',
-    fontSize: 11,
-    letterSpacing: 1.6,
+    fontSize: 10,
+    letterSpacing: 0.4,
+    alignSelf: 'flex-start',
     backgroundColor: 'rgba(0,0,0,0.42)',
     borderRadius: 999,
     paddingVertical: 6,
     paddingHorizontal: 12,
     overflow: 'hidden',
   },
-  headerActions: { flexDirection: 'row', gap: 8 },
   pill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -470,7 +467,6 @@ const styles = StyleSheet.create({
   pillText: { color: '#fff', fontSize: 11, letterSpacing: 0.8 },
   dock: {
     position: 'absolute',
-    zIndex: 2,
     left: 0,
     right: 0,
     bottom: 0,
@@ -483,7 +479,6 @@ const styles = StyleSheet.create({
   shutterRow: { alignItems: 'center', paddingTop: 4 },
   errorBox: {
     position: 'absolute',
-    zIndex: 3,
     left: 20,
     right: 20,
     top: '45%',
