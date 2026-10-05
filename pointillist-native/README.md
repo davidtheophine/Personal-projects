@@ -7,9 +7,21 @@ generalises. Take a photo and it saves to your camera roll as the painting, not 
 Runs in **Expo Go** on SDK 57. No dev build, no native modules to compile.
 
 ```bash
-npm install
-npx expo start      # scan the QR code with Expo Go (add --tunnel if off Wi-Fi)
+cd pointillist-native
+npm install     # first time only
+npm start       # prints a QR code — scan it with Expo Go
 ```
+
+> **Only ever use `npm start` (or `npx expo start`).**
+>
+> `npx expo run` — and its `run:ios` / `run:android` forms — is a different command that
+> compiles a *native* app. It needs Xcode or Android Studio plus CocoaPods, and before it
+> fails it will prebuild: generating `ios/` and `android/` directories and rewriting your
+> `package.json` and `app.json`. The error it leaves behind is
+> `The sandbox is not in sync with the Podfile.lock`, which has nothing to do with this
+> project. Nothing here needs a native build.
+>
+> If you ran it by accident: `git checkout -- package.json app.json && rm -rf ios android`
 
 ## Controls
 
@@ -98,10 +110,3 @@ git push                      # send it to GitHub
 
 `git status` shows what has changed, `git log --oneline` shows recent commits. If `git push`
 complains that the branch has no upstream, it will print the exact command to run — copy it.
-
-## Do not run `expo run`
-
-`npx expo run:ios` / `run:android` compile a **native** app. They need Xcode or Android Studio
-plus CocoaPods, they take minutes, and they generate `ios/` and `android/` directories while
-rewriting `package.json` and `app.json`. This project is built for Expo Go specifically so none
-of that is necessary. The only command you need is `npx expo start`.
