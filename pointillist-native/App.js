@@ -68,6 +68,8 @@ function Studio() {
   const [saveStatus, setSaveStatus] = useState('idle')
   const [error, setError] = useState(null)
 
+  const [status, setStatus] = useState('Starting…')
+  const statusRef = useRef('Starting…')
   const [dev, setDev] = useState(null) // null = hidden
   const devOpenRef = useRef(false)
   const [stats, setStats] = useState({ cols: 0, rows: 0, fps: 0 })
@@ -83,17 +85,18 @@ function Studio() {
 
   // --- GL ------------------------------------------------------------------
 
+  // Both calls report whether they actually drew: until the view has been laid
+  // out the surface is 0x0 and there is nothing to present.
   const draw = useCallback(() => {
     const gl = glRef.current
     const renderer = rendererRef.current
     if (!gl || !renderer) return null
     if (!textureRef.current) {
-      renderer.clear(stateRef.current.paper)
-      gl.endFrameEXP()
+      if (renderer.clear(stateRef.current.paper)) gl.endFrameEXP()
       return null
     }
     const grid = renderer.render({ ...stateRef.current, cameraTexture: textureRef.current })
-    gl.endFrameEXP()
+    if (grid) gl.endFrameEXP()
     return grid
   }, [])
 
@@ -150,6 +153,18 @@ function Studio() {
       rafRef.current = requestAnimationFrame(tick)
       if (pausedRef.current) return
       const grid = draw()
+
+      const laidOut = (rendererRef.current?.size().width ?? 0) > 0
+      const next = !laidOut
+        ? 'Sizing the canvas…'
+        : !textureRef.current
+          ? 'Waking the camera…'
+          : null
+      if (next !== statusRef.current) {
+        statusRef.current = next
+        setStatus(next)
+      }
+
       frames += 1
       const now = Date.now()
       if (now - since > 700) {
@@ -171,7 +186,11 @@ function Studio() {
   // --- capture -------------------------------------------------------------
 
   const capture = useCallback(async () => {
-    if (!textureRef.current) return
+    const renderer = rendererRef.current
+    if (!renderer || !textureRef.current) return
+    const { width, height } = renderer.size()
+    if (width <= 0 || height <= 0) return
+
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {})
     pausedRef.current = true
     try {
@@ -179,6 +198,9 @@ function Studio() {
       const snapshot = await glViewRef.current.takeSnapshotAsync({
         format: 'png',
         flip: stateRef.current.snapshotFlip,
+        // Explicit rect: left to itself expo-gl snapshots the ambient GL
+        // viewport, i.e. whatever the last draw call happened to leave bound.
+        rect: { x: 0, y: 0, width, height },
       })
       setSaveStatus('idle')
       setShot(snapshot)
@@ -288,7 +310,7 @@ function Studio() {
       <GLView ref={glViewRef} style={styles.canvas} onContextCreate={onContextCreate} />
 
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
-        {textureReady ? <View /> : <Text style={styles.status}>Waking the camera…</Text>}
+        {status ? <Text style={styles.status}>{status}</Text> : <View />}
         <View style={styles.headerActions}>
           <Pressable
             onPress={() => {

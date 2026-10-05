@@ -69,3 +69,13 @@ explicit `zIndex` below the canvas. Do not "simplify" that away.
 For the same reason `draw()` clears to the paper colour and still calls `endFrameEXP()` when
 there is no camera texture yet: an opaque surface means a missing camera reads as blank paper,
 not as a working camera app.
+
+## Never cache the drawing buffer size
+
+`onContextCreate` can fire before the `GLView` has been laid out, so
+`gl.drawingBufferWidth/Height` may still be `0`. Caching that at construction gives a zero-sized
+grid texture and a zero-sized viewport: black screen, and `takeSnapshotAsync` rejects with
+`E_GL_INVALID_VIEWPORT` because with no `rect` it snapshots the *ambient GL viewport*. It is a
+race, so it reproduces intermittently. `createRenderer` re-measures every frame and reallocates
+on change; `render()` and `clear()` return falsy until the surface is real, and the caller only
+calls `endFrameEXP()` when something was actually drawn. Capture passes an explicit `rect`.
