@@ -58,6 +58,10 @@ function Studio() {
   const textureRef = useRef(null)
   const rafRef = useRef(null)
   const pausedRef = useRef(false)
+  // Dev switch: paint flat paper and ignore the camera entirely. If the screen
+  // changes colour with this on, the canvas is on screen and the camera is the
+  // problem; if it stays black, the canvas is not being composited.
+  const canvasTestRef = useRef(false)
   // Device-pixel size of the GL surface. The canvas fills the window, so the
   // window is a reliable source that is available on the very first render —
   // `onLayout` only ever refines it. Kept in a ref so it survives a context
@@ -111,7 +115,7 @@ function Studio() {
     const gl = glRef.current
     const renderer = rendererRef.current
     if (!gl || !renderer) return null
-    if (!textureRef.current) {
+    if (!textureRef.current || canvasTestRef.current) {
       if (renderer.clear(stateRef.current.paper)) gl.endFrameEXP()
       return null
     }
@@ -179,11 +183,13 @@ function Studio() {
 
       // Numbers, not adjectives — this chip is how a broken frame gets diagnosed.
       const surface = rendererRef.current?.size() ?? { width: 0, height: 0 }
+      const pixel = rendererRef.current?.probe()
       const next = [
         `gl ${rendererRef.current ? 'ok' : '--'}`,
         `cam ${textureRef.current ? 'ok' : '--'}`,
         `${surface.width}x${surface.height}`,
-        grid ? `${grid.cols}x${grid.rows} dots` : 'no dots',
+        grid ? `${grid.cols}x${grid.rows}` : 'no dots',
+        pixel ? `rgb ${pixel.join(',')}` : 'rgb --',
       ].join(' · ')
       if (next !== statusRef.current) {
         statusRef.current = next
@@ -285,7 +291,7 @@ function Studio() {
   const openDev = useCallback(() => {
     const { orientationIndex, texAspect, snapshotFlip, stagger } = stateRef.current
     devOpenRef.current = true
-    setDev({ orientationIndex, texAspect, snapshotFlip, stagger })
+    setDev({ orientationIndex, texAspect, snapshotFlip, stagger, canvasTest: canvasTestRef.current })
   }, [])
 
   const closeDev = useCallback(() => {
@@ -313,6 +319,7 @@ function Studio() {
       stateRef.current.texAspect = next.texAspect
       stateRef.current.snapshotFlip = next.snapshotFlip
       stateRef.current.stagger = next.stagger
+      canvasTestRef.current = next.canvasTest
       return next
     })
   }, [])

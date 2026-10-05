@@ -63,6 +63,7 @@ export function createRenderer(gl) {
   let gridMax = [0, 0]
 
   const ready = () => width > 0 && height > 0
+  let lastGrid = null
 
   /**
    * Set the drawing buffer size, in device pixels. Safe to call every layout —
@@ -155,7 +156,8 @@ export function createRenderer(gl) {
     gl.uniform1f(dotPass.u.uPaperTint, paperTint)
     gl.drawArrays(gl.TRIANGLES, 0, 3)
 
-    return { cols, rows }
+    lastGrid = { cols, rows }
+    return lastGrid
   }
 
   /**
@@ -176,6 +178,27 @@ export function createRenderer(gl) {
   /** Drawing buffer size, or zeroes until the view has been laid out. */
   const size = () => ({ width, height })
 
+  const probePixel = new Uint8Array(4)
+
+  /**
+   * Read one averaged cell straight back off the grid texture. This is the only
+   * way to tell "the camera texture is empty" apart from "the canvas is not on
+   * screen" — both look like a blank app otherwise. Call sparingly: `readPixels`
+   * stalls the pipeline.
+   * @returns [r, g, b] 0-255, or null if there is nothing to read yet.
+   */
+  function probe() {
+    if (!ready() || lastGrid === null) return null
+    gl.bindFramebuffer(gl.FRAMEBUFFER, cellTarget)
+    gl.readPixels(
+      Math.floor(lastGrid.cols / 2),
+      Math.floor(lastGrid.rows / 2),
+      1, 1, gl.RGBA, gl.UNSIGNED_BYTE, probePixel,
+    )
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+    return [probePixel[0], probePixel[1], probePixel[2]]
+  }
+
   function dispose() {
     gl.deleteFramebuffer(cellTarget)
     gl.deleteTexture(cellTexture)
@@ -188,5 +211,5 @@ export function createRenderer(gl) {
   // as React Native reports a layout.
   setSize(gl.drawingBufferWidth, gl.drawingBufferHeight)
 
-  return { render, clear, setSize, size, dispose }
+  return { render, clear, probe, setSize, size, dispose }
 }

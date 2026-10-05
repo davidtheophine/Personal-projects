@@ -35,6 +35,10 @@ export default function DevPanel({ state, set, stats, onClose }) {
         }} />
         <Chip label={`Snapshot flip ${state.snapshotFlip ? 'on' : 'off'}`} onPress={() => set({ snapshotFlip: !state.snapshotFlip })} />
         <Chip label={`Stagger ${state.stagger ? 'brick' : 'grid'}`} onPress={() => set({ stagger: state.stagger ? 0 : 0.5 })} />
+        <Chip
+          label={`Canvas test ${state.canvasTest ? 'ON' : 'off'}`}
+          onPress={() => set({ canvasTest: !state.canvasTest })}
+        />
         <Chip label="Close" onPress={onClose} />
       </View>
       <Text style={styles.note}>
