@@ -13,6 +13,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera'
 import { GLView } from 'expo-gl'
 import * as Haptics from 'expo-haptics'
 import * as MediaLibrary from 'expo-media-library'
+import * as ScreenOrientation from 'expo-screen-orientation'
 import { StatusBar } from 'expo-status-bar'
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context'
 
@@ -37,6 +38,16 @@ const formatSize = (v) => `${v.toFixed(1)}pt`
 const formatColour = (v) => (v < 0.02 ? 'mono' : v.toFixed(2))
 const formatPalette = (v) => (v > 16 ? 'full' : `${Math.round(v)}`)
 
+// iOS pins the capture connection to portrait (see expo-gl's EXGLCameraObject),
+// so the texture never rotates with the device — we have to rotate the sampling
+// to match. Android's SurfaceTexture matrix behaves the same way in practice.
+const DEVICE_ROTATION = {
+  [ScreenOrientation.Orientation.PORTRAIT_UP]: 0,
+  [ScreenOrientation.Orientation.LANDSCAPE_LEFT]: 90,
+  [ScreenOrientation.Orientation.PORTRAIT_DOWN]: 180,
+  [ScreenOrientation.Orientation.LANDSCAPE_RIGHT]: 270,
+}
+
 const toSurface = ({ width, height }) => ({
   width: PixelRatio.getPixelSizeForLayoutSize(width || 0),
   height: PixelRatio.getPixelSizeForLayoutSize(height || 0),
@@ -46,10 +57,7 @@ function Studio() {
   const insets = useSafeAreaInsets()
   const window = useWindowDimensions()
   const [camPerm, requestCamPerm] = useCameraPermissions()
-  const [libPerm, requestLibPerm] = MediaLibrary.usePermissions({
-    writeOnly: true,
-    granularPermissions: ['photo'],
-  })
+  MediaLibrary.usePermissions({ writeOnly: true, granularPermissions: ['photo'] })
 
   const cameraRef = useRef(null)
   const glViewRef = useRef(null)
@@ -79,21 +87,26 @@ function Studio() {
     texAspect: CAMERA_TEXTURE_ASPECT,
     orientation: ORIENTATIONS[DEFAULT_ORIENTATION],
     orientationIndex: DEFAULT_ORIENTATION,
+    deviceRotation: 0,
     snapshotFlip: SNAPSHOT_FLIP,
     ...LOOK,
   })
 
   const [facing, setFacing] = useState('back')
+  const [controlsOpen, setControlsOpen] = useState(true)
   const [paperIndex, setPaperIndex] = useState(0)
   const [cameraReady, setCameraReady] = useState(false)
   const [textureReady, setTextureReady] = useState(false)
   const [glReady, setGlReady] = useState(false)
   const [shot, setShot] = useState(null)
   const [saveStatus, setSaveStatus] = useState('idle')
+  const [saveError, setSaveError] = useState(null)
   const [error, setError] = useState(null)
 
-  const [status, setStatus] = useState('starting')
-  const statusRef = useRef('starting')
+  // The colour under the middle of the frame, read straight off the grid
+  // texture. Started life as a debug probe; it earns its place as a readout.
+  const [centre, setCentre] = useState(null)
+  const centreRef = useRef('')
   const [dev, setDev] = useState(null) // null = hidden
   const devOpenRef = useRef(false)
   const [stats, setStats] = useState({ cols: 0, rows: 0, fps: 0 })
@@ -106,6 +119,28 @@ function Studio() {
   useEffect(() => {
     stateRef.current.mirror = facing === 'front'
   }, [facing])
+
+  const applyOrientation = useCallback((deviceDegrees) => {
+    const base = ORIENTATIONS[stateRef.current.orientationIndex]
+    stateRef.current.deviceRotation = deviceDegrees
+    stateRef.current.orientation = { ...base, rot: (base.rot + deviceDegrees) % 360 }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    const handle = (orientation) => {
+      if (cancelled) return
+      applyOrientation(DEVICE_ROTATION[orientation] ?? 0)
+    }
+    ScreenOrientation.getOrientationAsync().then(handle).catch(() => {})
+    const sub = ScreenOrientation.addOrientationChangeListener((e) =>
+      handle(e.orientationInfo.orientation),
+    )
+    return () => {
+      cancelled = true
+      ScreenOrientation.removeOrientationChangeListener(sub)
+    }
+  }, [applyOrientation])
 
   // --- GL ------------------------------------------------------------------
 
@@ -181,19 +216,11 @@ function Studio() {
       if (pausedRef.current) return
       const grid = draw()
 
-      // Numbers, not adjectives — this chip is how a broken frame gets diagnosed.
-      const surface = rendererRef.current?.size() ?? { width: 0, height: 0 }
       const pixel = rendererRef.current?.probe()
-      const next = [
-        `gl ${rendererRef.current ? 'ok' : '--'}`,
-        `cam ${textureRef.current ? 'ok' : '--'}`,
-        `${surface.width}x${surface.height}`,
-        grid ? `${grid.cols}x${grid.rows}` : 'no dots',
-        pixel ? `rgb ${pixel.join(',')}` : 'rgb --',
-      ].join(' · ')
-      if (next !== statusRef.current) {
-        statusRef.current = next
-        setStatus(next)
+      const key = pixel ? pixel.join(',') : ''
+      if (key !== centreRef.current) {
+        centreRef.current = key
+        setCentre(pixel)
       }
 
       frames += 1
@@ -252,6 +279,7 @@ function Studio() {
         rect: { x: 0, y: 0, width, height },
       })
       setSaveStatus('idle')
+      setSaveError(null)
       setShot(snapshot)
     } catch (e) {
       pausedRef.current = false
@@ -262,29 +290,39 @@ function Studio() {
   const discard = useCallback(() => {
     setShot(null)
     setSaveStatus('idle')
+    setSaveError(null)
     pausedRef.current = false
   }, [])
 
   const save = useCallback(async () => {
     setSaveStatus('saving')
+    setSaveError(null)
     try {
-      let permission = libPerm
-      if (!permission?.granted) permission = await requestLibPerm()
-      if (!permission?.granted) {
+      // Ask the module directly rather than through the hook: the hook's cached
+      // response can be a render behind, and "add photos only" is exactly the
+      // access this needs.
+      let permission = await MediaLibrary.getPermissionsAsync(true, ['photo'])
+      if (!permission.granted && permission.canAskAgain) {
+        permission = await MediaLibrary.requestPermissionsAsync(true, ['photo'])
+      }
+      if (!permission.granted) {
         setSaveStatus('idle')
-        Alert.alert('Photos access needed', 'Allow adding photos to save your pointillist shots.')
+        setSaveError('Photos access is off. Enable "Add Photos Only" for Expo Go in Settings.')
         return
       }
+
       await MediaLibrary.Asset.create(shot.localUri || shot.uri)
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {})
       setSaveStatus('saved')
       // Back to the viewfinder on its own — a capture should never dead-end.
-      setTimeout(discard, 850)
+      setTimeout(discard, 1200)
     } catch (e) {
       setSaveStatus('idle')
-      Alert.alert('Could not save', e.message)
+      // Shown in the review bar rather than an alert: an alert can be dismissed
+      // without reading it, which is how a failing save looks like a no-op.
+      setSaveError(e?.message ? String(e.message) : 'Could not save to the camera roll.')
     }
-  }, [discard, libPerm, requestLibPerm, shot])
+  }, [discard, shot])
 
   // --- dev panel -----------------------------------------------------------
 
@@ -315,14 +353,14 @@ function Studio() {
     setDev((prev) => {
       const next = { ...prev, ...patch }
       stateRef.current.orientationIndex = next.orientationIndex
-      stateRef.current.orientation = ORIENTATIONS[next.orientationIndex]
+      applyOrientation(stateRef.current.deviceRotation)
       stateRef.current.texAspect = next.texAspect
       stateRef.current.snapshotFlip = next.snapshotFlip
       stateRef.current.stagger = next.stagger
       canvasTestRef.current = next.canvasTest
       return next
     })
-  }, [])
+  }, [applyOrientation])
 
   // --- render --------------------------------------------------------------
 
@@ -388,8 +426,22 @@ function Studio() {
           >
             <Text style={styles.pillText}>Flip</Text>
           </Pressable>
+          <Pressable
+            onPress={() => setControlsOpen((open) => !open)}
+            hitSlop={8}
+            style={styles.pill}
+            accessibilityRole="button"
+            accessibilityLabel={controlsOpen ? 'Hide controls' : 'Show controls'}
+          >
+            <Text style={styles.pillText}>{controlsOpen ? 'Hide' : 'Adjust'}</Text>
+          </Pressable>
         </View>
-        {status ? <Text style={styles.status}>{status}</Text> : null}
+        {centre ? (
+          <View style={styles.readout}>
+            <View style={[styles.readoutSwatch, { backgroundColor: `rgb(${centre.join(',')})` }]} />
+            <Text style={styles.readoutText}>{centre.join(' · ')}</Text>
+          </View>
+        ) : null}
       </View>
 
       {error ? (
@@ -398,16 +450,18 @@ function Studio() {
         </View>
       ) : null}
 
-      <View style={[styles.dock, { paddingBottom: insets.bottom + 18 }]}>
+      <View style={[styles.dock, controlsOpen && styles.dockOpen, { paddingBottom: insets.bottom + 18 }]}>
         {dev ? (
           <DevPanel state={dev} set={setDevValue} stats={stats} onClose={closeDev} />
         ) : null}
 
-        <View style={styles.sliders}>
-          <PointSlider {...CONTROLS.dotSize} onChange={setDotSize} format={formatSize} />
-          <PointSlider {...CONTROLS.colour} onChange={setSaturation} format={formatColour} />
-          <PointSlider {...CONTROLS.palette} onChange={setLevels} format={formatPalette} />
-        </View>
+        {controlsOpen ? (
+          <View style={styles.sliders}>
+            <PointSlider {...CONTROLS.dotSize} onChange={setDotSize} format={formatSize} />
+            <PointSlider {...CONTROLS.colour} onChange={setSaturation} format={formatColour} />
+            <PointSlider {...CONTROLS.palette} onChange={setLevels} format={formatPalette} />
+          </View>
+        ) : null}
 
         <View style={styles.shutterRow}>
           <ShutterButton onPress={capture} busy={!textureReady} />
@@ -415,7 +469,13 @@ function Studio() {
       </View>
 
       {shot ? (
-        <ReviewOverlay shot={shot} status={saveStatus} onSave={save} onDiscard={discard} />
+        <ReviewOverlay
+          shot={shot}
+          status={saveStatus}
+          error={saveError}
+          onSave={save}
+          onDiscard={discard}
+        />
       ) : null}
 
       <StatusBar style="light" />
@@ -443,16 +503,29 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   headerActions: { flexDirection: 'row', gap: 8, justifyContent: 'flex-end' },
-  status: {
-    color: '#fff',
-    fontSize: 10,
-    letterSpacing: 0.4,
-    alignSelf: 'flex-start',
-    backgroundColor: 'rgba(0,0,0,0.42)',
+  readout: {
+    alignSelf: 'flex-end',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
     borderRadius: 999,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    overflow: 'hidden',
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    backgroundColor: 'rgba(0,0,0,0.42)',
+  },
+  readoutSwatch: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.35)',
+  },
+  readoutText: {
+    color: '#fff',
+    opacity: 0.8,
+    fontSize: 10,
+    letterSpacing: 0.6,
+    fontVariant: ['tabular-nums'],
   },
   pill: {
     flexDirection: 'row',
@@ -473,8 +546,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 16,
     gap: 12,
-    backgroundColor: 'rgba(0,0,0,0.38)',
   },
+  dockOpen: { backgroundColor: 'rgba(0,0,0,0.42)' },
   sliders: { gap: 2 },
   shutterRow: { alignItems: 'center', paddingTop: 4 },
   errorBox: {

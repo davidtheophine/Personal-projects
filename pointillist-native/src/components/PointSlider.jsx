@@ -1,19 +1,19 @@
 import { memo, useCallback, useMemo, useRef, useState } from 'react'
 import { Animated, PanResponder, StyleSheet, Text, View } from 'react-native'
 
-const TRACK_DOTS = 22
-const DOT = 7
+const KNOB = 24
+const TRACK = 5
 
 /**
- * Placeholder slider, built out of the same dots the app is about — the track
- * swells left-to-right so the control previews its own effect.
+ * Label and value sit on their own line above the track, so neither has to
+ * compete with the bar for space or legibility.
  *
- * Swap it for a bespoke design by keeping this prop contract:
+ * Swap this out by keeping the prop contract:
  *   value / min / max / step / onChange(next) / format(value) -> string
  *
- * Dragging never re-renders the parent: the thumb and track run on a native
- * driven Animated value, `onChange` writes straight to the render loop's ref,
- * and only the small readout uses state (throttled).
+ * Dragging never re-renders the parent: the fill and knob ride an
+ * `Animated.Value`, `onChange` writes straight to the render loop's ref, and
+ * only the small readout uses state (throttled).
  */
 function PointSlider({ label, value, min, max, step = 0.01, onChange, format }) {
   const [readout, setReadout] = useState(() => format(value))
@@ -49,53 +49,35 @@ function PointSlider({ label, value, min, max, step = 0.01, onChange, format }) 
           grabbedAt.current = e.nativeEvent.locationX
           emit(grabbedAt.current / width.current)
         },
-        onPanResponderMove: (e, g) => {
-          emit((grabbedAt.current + g.dx) / width.current)
-        },
+        onPanResponderMove: (e, g) => emit((grabbedAt.current + g.dx) / width.current),
       }),
     [emit],
   )
 
-  const dots = useMemo(() => Array.from({ length: TRACK_DOTS }, (_, i) => i / (TRACK_DOTS - 1)), [])
+  const percent = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0%', '100%'],
+  })
 
   return (
     <View style={styles.row}>
-      <Text style={styles.label}>{label}</Text>
+      <View style={styles.caption}>
+        <Text style={styles.label}>{label}</Text>
+        <Text style={styles.readout}>{readout}</Text>
+      </View>
+
       <View
-        style={styles.track}
+        style={styles.hit}
         onLayout={(e) => {
           width.current = e.nativeEvent.layout.width
         }}
         {...pan.panHandlers}
       >
-        {dots.map((t) => (
-          <Animated.View
-            key={t}
-            style={[
-              styles.dot,
-              {
-                opacity: progress.interpolate({
-                  inputRange: [t - 0.04, t + 0.04],
-                  outputRange: [0.22, 0.95],
-                  extrapolate: 'clamp',
-                }),
-                transform: [
-                  {
-                    // Dots behind the handle grow with the value, so the track
-                    // reads as a size ramp rather than a plain fill.
-                    scale: progress.interpolate({
-                      inputRange: [t - 0.04, t + 0.04],
-                      outputRange: [0.4, 0.4 + t * 1.3],
-                      extrapolate: 'clamp',
-                    }),
-                  },
-                ],
-              },
-            ]}
-          />
-        ))}
+        <View style={styles.track}>
+          <Animated.View style={[styles.fill, { width: percent }]} />
+        </View>
+        <Animated.View style={[styles.knob, { left: percent, marginLeft: -KNOB / 2 }]} />
       </View>
-      <Text style={styles.readout}>{readout}</Text>
     </View>
   )
 }
@@ -103,29 +85,44 @@ function PointSlider({ label, value, min, max, step = 0.01, onChange, format }) 
 export default memo(PointSlider)
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12, height: 44 },
+  row: { paddingVertical: 8 },
+  caption: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    marginBottom: 9,
+  },
   label: {
-    width: 54,
     color: '#fff',
-    opacity: 0.55,
-    fontSize: 10,
-    letterSpacing: 1.4,
+    opacity: 0.5,
+    fontSize: 11,
+    letterSpacing: 1.8,
     textTransform: 'uppercase',
   },
-  track: {
-    flex: 1,
-    height: 44,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  dot: { width: DOT, height: DOT, borderRadius: DOT / 2, backgroundColor: '#fff' },
   readout: {
-    width: 52,
-    textAlign: 'right',
     color: '#fff',
-    opacity: 0.85,
-    fontSize: 12,
+    fontSize: 15,
+    fontWeight: '600',
     fontVariant: ['tabular-nums'],
+  },
+  // Generous touch target around a thin track.
+  hit: { height: KNOB, justifyContent: 'center' },
+  track: {
+    height: TRACK,
+    borderRadius: TRACK,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    overflow: 'hidden',
+  },
+  fill: { height: TRACK, borderRadius: TRACK, backgroundColor: '#fff' },
+  knob: {
+    position: 'absolute',
+    width: KNOB,
+    height: KNOB,
+    borderRadius: KNOB / 2,
+    backgroundColor: '#fff',
+    shadowColor: '#000',
+    shadowOpacity: 0.45,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 2 },
   },
 })

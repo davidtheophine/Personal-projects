@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
  * Shown after the shutter: the frozen frame plus save / discard. Every exit is
  * one tap — the close cross, Retake, or Save (which returns on its own).
  */
-export default function ReviewOverlay({ shot, status, onSave, onDiscard }) {
+export default function ReviewOverlay({ shot, status, error, onSave, onDiscard }) {
   const insets = useSafeAreaInsets()
   const saved = status === 'saved'
 
@@ -28,6 +28,8 @@ export default function ReviewOverlay({ shot, status, onSave, onDiscard }) {
       </Pressable>
 
       <View style={[styles.bar, { paddingBottom: insets.bottom + 24 }]}>
+        {error ? <Text style={styles.error}>{error}</Text> : null}
+        <View style={styles.actions}>
         <Pressable onPress={onDiscard} hitSlop={10} style={styles.ghost}>
           <Text style={styles.ghostText}>Retake</Text>
         </Pressable>
@@ -50,6 +52,7 @@ export default function ReviewOverlay({ shot, status, onSave, onDiscard }) {
             </Text>
           </Pressable>
         )}
+        </View>
       </View>
     </View>
   )
@@ -73,13 +76,17 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
+    paddingHorizontal: 22,
+    paddingTop: 18,
+    gap: 12,
+    backgroundColor: 'rgba(0,0,0,0.72)',
+  },
+  actions: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 22,
-    paddingTop: 20,
-    backgroundColor: 'rgba(0,0,0,0.72)',
   },
+  error: { color: '#ff9c8d', fontSize: 13, lineHeight: 18 },
   ghost: { paddingVertical: 14, paddingHorizontal: 14 },
   ghostText: { color: '#fff', opacity: 0.8, fontSize: 15, letterSpacing: 0.4 },
   solid: {
