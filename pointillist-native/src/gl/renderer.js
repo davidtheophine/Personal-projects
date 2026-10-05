@@ -34,12 +34,13 @@ const hexToRgb = (hex) => {
  * Owns every GL object for the effect. Call `render(state)` once per frame and
  * `dispose()` when the view goes away.
  *
- * The drawing buffer is measured every frame rather than once at construction:
- * `onContextCreate` can fire before the view has been laid out, in which case
- * the surface is still 0x0. Caching that produces a zero-sized grid texture, a
- * zero-sized viewport, a black screen, and a `takeSnapshotAsync` that rejects
- * with `E_GL_INVALID_VIEWPORT`. Re-measuring also makes rotation and any other
- * surface resize work for free.
+ * The surface size must be pushed in via `setSize` from React Native layout.
+ * `gl.drawingBufferWidth`/`Height` look like the obvious source but are a trap:
+ * expo-gl sets them once, at context creation, from `glGetIntegerv(GL_VIEWPORT)`,
+ * and never updates them. If `onContextCreate` fires before the view is laid out
+ * they read 0 permanently — no amount of re-reading recovers — which yields a
+ * zero-sized grid texture, a black screen, and a `takeSnapshotAsync` that
+ * rejects with `E_GL_INVALID_VIEWPORT`.
  */
 export function createRenderer(gl) {
   const cellPass = link(gl, CELL_FRAG, [
@@ -61,11 +62,17 @@ export function createRenderer(gl) {
   let height = 0
   let gridMax = [0, 0]
 
-  /** @returns true once the surface has a real size and the grid is allocated. */
-  function measure() {
-    const w = Math.floor(gl.drawingBufferWidth) || 0
-    const h = Math.floor(gl.drawingBufferHeight) || 0
-    if (w <= 0 || h <= 0) return false
+  const ready = () => width > 0 && height > 0
+
+  /**
+   * Set the drawing buffer size, in device pixels. Safe to call every layout —
+   * it only reallocates when the size actually changes.
+   * @returns true once the grid is allocated and rendering can proceed.
+   */
+  function setSize(w, h) {
+    w = Math.floor(w) || 0
+    h = Math.floor(h) || 0
+    if (w <= 0 || h <= 0) return ready()
     if (w === width && h === height) return true
 
     width = w
@@ -95,7 +102,7 @@ export function createRenderer(gl) {
   }
 
   function render(state) {
-    if (!measure()) return null
+    if (!ready()) return null
     const {
       cameraTexture, dotSize, saturation, levels, fill, stagger, jitter,
       lumaSize, paper, paperTint, orientation, mirror, texAspect,
@@ -157,7 +164,7 @@ export function createRenderer(gl) {
    * as blank paper instead of silently showing whatever sits behind the view.
    */
   function clear(paper) {
-    if (!measure()) return false
+    if (!ready()) return false
     gl.bindFramebuffer(gl.FRAMEBUFFER, null)
     gl.viewport(0, 0, width, height)
     const [r, g, b] = hexToRgb(paper)
@@ -177,5 +184,9 @@ export function createRenderer(gl) {
     gl.deleteProgram(dotPass.program)
   }
 
-  return { render, clear, size, dispose }
+  // Seed from the context's own idea of its size; `setSize` corrects it as soon
+  // as React Native reports a layout.
+  setSize(gl.drawingBufferWidth, gl.drawingBufferHeight)
+
+  return { render, clear, setSize, size, dispose }
 }

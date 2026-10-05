@@ -70,12 +70,19 @@ For the same reason `draw()` clears to the paper colour and still calls `endFram
 there is no camera texture yet: an opaque surface means a missing camera reads as blank paper,
 not as a working camera app.
 
-## Never cache the drawing buffer size
+## `gl.drawingBufferWidth` is a trap — take the size from layout
 
-`onContextCreate` can fire before the `GLView` has been laid out, so
-`gl.drawingBufferWidth/Height` may still be `0`. Caching that at construction gives a zero-sized
-grid texture and a zero-sized viewport: black screen, and `takeSnapshotAsync` rejects with
-`E_GL_INVALID_VIEWPORT` because with no `rect` it snapshots the *ambient GL viewport*. It is a
-race, so it reproduces intermittently. `createRenderer` re-measures every frame and reallocates
-on change; `render()` and `clear()` return falsy until the surface is real, and the caller only
-calls `endFrameEXP()` when something was actually drawn. Capture passes an explicit `rect`.
+expo-gl sets `drawingBufferWidth`/`drawingBufferHeight` **once**, at context creation, from
+`glGetIntegerv(GL_VIEWPORT)` (see `common/EXWebGLRenderer.cpp` and `EXGLNativeContext.cpp`).
+They are plain static JS properties and are never updated afterwards.
+
+`onContextCreate` can fire before the `GLView` is laid out, in which case both read `0` — and
+they stay `0` for the life of the context. Re-reading them per frame does not help. The result is
+a zero-sized grid texture, a zero-sized viewport, a black screen, and `takeSnapshotAsync`
+rejecting with `E_GL_INVALID_VIEWPORT` (with no `rect` it snapshots the ambient GL viewport, and
+rejects when width or height is 0).
+
+So the surface size is pushed in from React Native layout: `onLayout` on the `GLView`, through
+`PixelRatio.getPixelSizeForLayoutSize`, into `renderer.setSize()`. It is held in a ref because
+layout and context creation race, and because a context recreation builds a fresh renderer that
+needs the size again. Capture passes an explicit `rect`.

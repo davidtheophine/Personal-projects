@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native'
+import { Alert, PixelRatio, Pressable, StyleSheet, Text, View } from 'react-native'
 import { CameraView, useCameraPermissions } from 'expo-camera'
 import { GLView } from 'expo-gl'
 import * as Haptics from 'expo-haptics'
@@ -43,6 +43,9 @@ function Studio() {
   const textureRef = useRef(null)
   const rafRef = useRef(null)
   const pausedRef = useRef(false)
+  // Device-pixel size of the GL surface, from React Native layout. Kept here so
+  // it survives a context (and therefore renderer) recreation.
+  const surfaceRef = useRef({ width: 0, height: 0 })
 
   // Everything the render loop reads lives in a ref, so dragging a slider never
   // re-renders React — it just changes what the next frame draws.
@@ -109,7 +112,10 @@ function Studio() {
       textureRef.current = null
       setTextureReady(false)
       try {
-        rendererRef.current = createRenderer(gl)
+        const renderer = createRenderer(gl)
+        // Layout may well have landed before the context did.
+        renderer.setSize(surfaceRef.current.width, surfaceRef.current.height)
+        rendererRef.current = renderer
         setGlReady(true)
       } catch (e) {
         setError(e.message)
@@ -182,6 +188,19 @@ function Studio() {
   }, [draw, glReady])
 
   useEffect(() => () => rendererRef.current?.dispose(), [])
+
+  // expo-gl cannot tell us how big its own surface is, so React Native layout is
+  // the only reliable source. Fires before or after `onContextCreate` depending
+  // on the run, hence the ref.
+  const onCanvasLayout = useCallback((e) => {
+    const { width, height } = e.nativeEvent.layout
+    const size = {
+      width: PixelRatio.getPixelSizeForLayoutSize(width),
+      height: PixelRatio.getPixelSizeForLayoutSize(height),
+    }
+    surfaceRef.current = size
+    rendererRef.current?.setSize(size.width, size.height)
+  }, [])
 
   // --- capture -------------------------------------------------------------
 
@@ -307,7 +326,12 @@ function Studio() {
           onCameraReady={() => setCameraReady(true)}
         />
       </View>
-      <GLView ref={glViewRef} style={styles.canvas} onContextCreate={onContextCreate} />
+      <GLView
+        ref={glViewRef}
+        style={styles.canvas}
+        onLayout={onCanvasLayout}
+        onContextCreate={onContextCreate}
+      />
 
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
         {status ? <Text style={styles.status}>{status}</Text> : <View />}
