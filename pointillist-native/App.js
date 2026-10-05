@@ -13,6 +13,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera'
 import { GLView } from 'expo-gl'
 import * as Haptics from 'expo-haptics'
 import * as MediaLibrary from 'expo-media-library'
+import * as MediaLibraryLegacy from 'expo-media-library/legacy'
 import * as ScreenOrientation from 'expo-screen-orientation'
 import { StatusBar } from 'expo-status-bar'
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -39,13 +40,34 @@ const formatColour = (v) => (v < 0.02 ? 'mono' : v.toFixed(2))
 const formatPalette = (v) => (v > 16 ? 'full' : `${Math.round(v)}`)
 
 // iOS pins the capture connection to portrait (see expo-gl's EXGLCameraObject),
-// so the texture never rotates with the device — we have to rotate the sampling
-// to match. Android's SurfaceTexture matrix behaves the same way in practice.
+// so the texture never rotates with the device — we rotate the sampling to
+// match. The angles run the opposite way to the interface rotation because the
+// base transform includes a vertical flip, and a rotation composed after a
+// reflection reverses handedness. Getting this backwards puts both landscape
+// orientations 180 degrees out, i.e. upside down.
 const DEVICE_ROTATION = {
   [ScreenOrientation.Orientation.PORTRAIT_UP]: 0,
-  [ScreenOrientation.Orientation.LANDSCAPE_LEFT]: 90,
+  [ScreenOrientation.Orientation.LANDSCAPE_LEFT]: 270,
   [ScreenOrientation.Orientation.PORTRAIT_DOWN]: 180,
-  [ScreenOrientation.Orientation.LANDSCAPE_RIGHT]: 270,
+  [ScreenOrientation.Orientation.LANDSCAPE_RIGHT]: 90,
+}
+
+/**
+ * The class-based `Asset.create` is new in SDK 57 and is the documented path,
+ * but fall back to the legacy writer if it fails — it is still shipped, still
+ * works, and a photo reaching the camera roll matters more than which API got
+ * it there. The original error is what surfaces if both fail.
+ */
+async function writeToLibrary(uri) {
+  try {
+    await MediaLibrary.Asset.create(uri)
+  } catch (primary) {
+    try {
+      await MediaLibraryLegacy.saveToLibraryAsync(uri)
+    } catch {
+      throw primary
+    }
+  }
 }
 
 const toSurface = ({ width, height }) => ({
@@ -311,7 +333,7 @@ function Studio() {
         return
       }
 
-      await MediaLibrary.Asset.create(shot.localUri || shot.uri)
+      await writeToLibrary(shot.localUri || shot.uri)
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {})
       setSaveStatus('saved')
       // Back to the viewfinder on its own — a capture should never dead-end.
@@ -426,15 +448,6 @@ function Studio() {
           >
             <Text style={styles.pillText}>Flip</Text>
           </Pressable>
-          <Pressable
-            onPress={() => setControlsOpen((open) => !open)}
-            hitSlop={8}
-            style={styles.pill}
-            accessibilityRole="button"
-            accessibilityLabel={controlsOpen ? 'Hide controls' : 'Show controls'}
-          >
-            <Text style={styles.pillText}>{controlsOpen ? 'Hide' : 'Adjust'}</Text>
-          </Pressable>
         </View>
         {centre ? (
           <View style={styles.readout}>
@@ -450,10 +463,28 @@ function Studio() {
         </View>
       ) : null}
 
-      <View style={[styles.dock, controlsOpen && styles.dockOpen, { paddingBottom: insets.bottom + 18 }]}>
+      <View
+        style={[
+          styles.dock,
+          controlsOpen && styles.dockOpen,
+          { paddingBottom: insets.bottom + 18 },
+          shot && styles.hidden,
+        ]}
+        pointerEvents={shot ? 'none' : 'auto'}
+      >
         {dev ? (
           <DevPanel state={dev} set={setDevValue} stats={stats} onClose={closeDev} />
         ) : null}
+
+        <Pressable
+          onPress={() => setControlsOpen((open) => !open)}
+          hitSlop={14}
+          style={styles.handle}
+          accessibilityRole="button"
+          accessibilityLabel={controlsOpen ? 'Hide controls' : 'Show controls'}
+        >
+          <Text style={styles.handleGlyph}>{controlsOpen ? '⌄' : '⌃'}</Text>
+        </Pressable>
 
         {controlsOpen ? (
           <View style={styles.sliders}>
@@ -548,6 +579,15 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   dockOpen: { backgroundColor: 'rgba(0,0,0,0.42)' },
+  hidden: { opacity: 0 },
+  handle: {
+    alignSelf: 'center',
+    paddingHorizontal: 26,
+    paddingVertical: 2,
+    borderRadius: 999,
+    backgroundColor: 'rgba(0,0,0,0.38)',
+  },
+  handleGlyph: { color: '#fff', opacity: 0.8, fontSize: 17, lineHeight: 21 },
   sliders: { gap: 2 },
   shutterRow: { alignItems: 'center', paddingTop: 4 },
   errorBox: {

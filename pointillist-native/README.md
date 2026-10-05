@@ -32,9 +32,9 @@ npm start       # prints a QR code — scan it with Expo Go
 | **Palette** | Quantises each channel to 2–16 levels, the way a painter works from a limited set of mixed pigments. Hard right is continuous. |
 | **Paper** (top right) | The colour showing through the gaps — Snow, Paper, Ink, Slate. |
 | **Flip** | Front / back camera. |
-| **Hide / Adjust** | Collapses the sliders down to just the shutter, for composing without the panel in the way. |
+| Chevron above the sliders | Collapses the panel down to just the shutter, for composing without it in the way. |
 | Colour readout | The sampled colour at the centre of frame, as a swatch and its RGB. |
-| Shutter | Freezes the frame, then offers **Save to camera roll** or **Retake**. Saving returns you to the viewfinder; the cross top-right discards. |
+| Shutter | Freezes the frame and develops it into view as a print, with **Save to camera roll** and **Retake** beneath. Saving returns you to the viewfinder on its own. |
 
 Everything renders on-device. Nothing is uploaded; photos leave the app only when you save them.
 

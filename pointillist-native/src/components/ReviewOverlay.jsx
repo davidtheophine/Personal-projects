@@ -1,103 +1,144 @@
-import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native'
+import { useEffect, useRef } from 'react'
+import {
+  ActivityIndicator,
+  Animated,
+  Image,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+} from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
+const BORDER = 13 // white margin on three sides
+const CHIN = 54 // the thick bottom edge that makes it read as a Polaroid
+
 /**
- * Shown after the shutter: the frozen frame plus save / discard. Every exit is
- * one tap — the close cross, Retake, or Save (which returns on its own).
+ * The capture, presented as a print that develops into view.
+ *
+ * The aperture keeps the snapshot's own aspect ratio rather than cropping to a
+ * square: what you see here is exactly the file that gets saved.
  */
 export default function ReviewOverlay({ shot, status, error, onSave, onDiscard }) {
   const insets = useSafeAreaInsets()
+  const window = useWindowDimensions()
+  const enter = useRef(new Animated.Value(0)).current
   const saved = status === 'saved'
+
+  useEffect(() => {
+    Animated.timing(enter, {
+      toValue: 1,
+      duration: 460,
+      useNativeDriver: true,
+    }).start()
+  }, [enter])
+
+  // Fit the print into whatever is left between the status bar and the button.
+  const available = {
+    width: window.width - 44,
+    height: window.height - insets.top - insets.bottom - 190,
+  }
+  const aspect = shot.width && shot.height ? shot.width / shot.height : 3 / 4
+  let frameWidth = available.width
+  let imageHeight = (frameWidth - BORDER * 2) / aspect
+  if (imageHeight + BORDER + CHIN > available.height) {
+    imageHeight = available.height - BORDER - CHIN
+    frameWidth = imageHeight * aspect + BORDER * 2
+  }
 
   return (
     <View style={styles.root}>
-      <Image
-        source={{ uri: shot.localUri || shot.uri }}
-        style={StyleSheet.absoluteFill}
-        resizeMode="contain"
-      />
-
-      <Pressable
-        onPress={onDiscard}
-        hitSlop={14}
-        accessibilityRole="button"
-        accessibilityLabel="Discard and go back to the camera"
-        style={[styles.close, { top: insets.top + 10 }]}
+      <Animated.View
+        style={[
+          styles.frame,
+          {
+            width: frameWidth,
+            opacity: enter,
+            transform: [
+              { translateY: enter.interpolate({ inputRange: [0, 1], outputRange: [26, 0] }) },
+              { scale: enter.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] }) },
+            ],
+          },
+        ]}
       >
-        <Text style={styles.closeGlyph}>✕</Text>
-      </Pressable>
+        <Image
+          source={{ uri: shot.localUri || shot.uri }}
+          style={{ width: frameWidth - BORDER * 2, height: imageHeight, backgroundColor: '#111' }}
+          resizeMode="cover"
+        />
+        <View style={styles.chin} />
+      </Animated.View>
 
-      <View style={[styles.bar, { paddingBottom: insets.bottom + 24 }]}>
+      <View style={[styles.bar, { paddingBottom: insets.bottom + 22 }]}>
         {error ? <Text style={styles.error}>{error}</Text> : null}
-        <View style={styles.actions}>
-        <Pressable onPress={onDiscard} hitSlop={10} style={styles.ghost}>
-          <Text style={styles.ghostText}>Retake</Text>
-        </Pressable>
 
         {status === 'saving' ? (
-          <View style={styles.solid}>
+          <View style={styles.save}>
             <ActivityIndicator color="#0a0a0b" />
           </View>
         ) : (
           <Pressable
             onPress={onSave}
             disabled={saved}
-            hitSlop={10}
+            style={[styles.save, saved && styles.saveDone]}
             accessibilityRole="button"
             accessibilityLabel="Save to camera roll"
-            style={[styles.solid, saved && styles.solidDone]}
           >
-            <Text style={[styles.solidText, saved && styles.solidTextDone]}>
+            <Text style={[styles.saveText, saved && styles.saveTextDone]}>
               {saved ? 'Saved ✓' : 'Save to camera roll'}
             </Text>
           </Pressable>
         )}
-        </View>
+
+        <Pressable onPress={onDiscard} hitSlop={12} style={styles.retake}>
+          <Text style={styles.retakeText}>Retake</Text>
+        </Pressable>
       </View>
     </View>
   )
 }
 
 const styles = StyleSheet.create({
-  root: { ...StyleSheet.absoluteFillObject, backgroundColor: '#000' },
-  close: {
-    position: 'absolute',
-    right: 18,
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+  root: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(8,8,9,0.96)',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.5)',
   },
-  closeGlyph: { color: '#fff', fontSize: 16, lineHeight: 19 },
+  frame: {
+    backgroundColor: '#fdfdfb',
+    padding: BORDER,
+    paddingBottom: 0,
+    borderRadius: 3,
+    shadowColor: '#000',
+    shadowOpacity: 0.55,
+    shadowRadius: 26,
+    shadowOffset: { width: 0, height: 14 },
+  },
+  chin: { height: CHIN },
   bar: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
-    paddingHorizontal: 22,
-    paddingTop: 18,
-    gap: 12,
-    backgroundColor: 'rgba(0,0,0,0.72)',
-  },
-  actions: {
-    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    gap: 14,
   },
-  error: { color: '#ff9c8d', fontSize: 13, lineHeight: 18 },
-  ghost: { paddingVertical: 14, paddingHorizontal: 14 },
-  ghostText: { color: '#fff', opacity: 0.8, fontSize: 15, letterSpacing: 0.4 },
-  solid: {
-    minWidth: 190,
+  save: {
+    minWidth: 240,
     alignItems: 'center',
     backgroundColor: '#fff',
     borderRadius: 999,
-    paddingVertical: 15,
-    paddingHorizontal: 24,
+    paddingVertical: 16,
+    paddingHorizontal: 28,
   },
-  solidDone: { backgroundColor: 'rgba(255,255,255,0.16)' },
-  solidText: { color: '#0a0a0b', fontSize: 15, fontWeight: '600', letterSpacing: 0.2 },
-  solidTextDone: { color: '#fff', fontWeight: '500' },
+  saveDone: { backgroundColor: 'rgba(255,255,255,0.16)' },
+  saveText: { color: '#0a0a0b', fontSize: 15, fontWeight: '600', letterSpacing: 0.2 },
+  saveTextDone: { color: '#fff', fontWeight: '500' },
+  retake: { paddingVertical: 4, paddingHorizontal: 16 },
+  retakeText: { color: '#fff', opacity: 0.7, fontSize: 14, letterSpacing: 0.3 },
+  error: { color: '#ff9c8d', fontSize: 13, lineHeight: 18, textAlign: 'center' },
 })

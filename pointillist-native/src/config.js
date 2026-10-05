@@ -7,8 +7,8 @@ export { MIN_DOT_PX } from './lib/constants'
  * multiplied by the screen's pixel ratio before it reaches the shader.
  */
 export const CONTROLS = {
-  dotSize: { label: 'Size', min: 2, max: 40, value: 7, step: 0.5 },
-  colour: { label: 'Colour', min: 0, max: 2, value: 1.15, step: 0.01 },
+  dotSize: { label: 'Size', min: 2, max: 40, value: 20, step: 0.5 },
+  colour: { label: 'Colour', min: 0, max: 2, value: 2, step: 0.01 },
   palette: { label: 'Palette', min: 2, max: 17, value: 17, step: 1 },
 }
 
@@ -21,18 +21,19 @@ export const LOOK = {
   paperTint: 0.0, // bleed of dot colour into the gaps
 }
 
+// First entry is what the app opens with.
 export const PAPERS = [
+  { name: 'Ink', colour: '#0A0A0B' },
   { name: 'Snow', colour: '#FFFFFF' },
   { name: 'Paper', colour: '#F4EFE4' },
-  { name: 'Ink', colour: '#0A0A0B' },
   { name: 'Slate', colour: '#15181C' },
 ]
 
 /**
  * Camera texture orientation. Index into `ORIENTATIONS` in
  * `lib/camera-transform.js`. These are the best starting guesses; if the
- * preview comes up rotated or mirrored, long-press the title to open the dev
- * panel, cycle until it looks right, and paste the index it prints back here.
+ * preview comes up rotated or mirrored, long-press the paper chip to open the
+ * dev panel, cycle until it looks right, and paste the index it prints here.
  */
 export const DEFAULT_ORIENTATION = Platform.select({ ios: 1, android: 1, default: 1 })
 
