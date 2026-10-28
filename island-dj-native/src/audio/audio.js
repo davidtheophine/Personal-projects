@@ -22,6 +22,7 @@ export class AudioEngine {
     this._fades = new Map() // player -> { timer, target }
     this._initFailed = false // true if the native player couldn't be created
     this._preparedIdx = null // idx currently preloaded (paused) in the idle player
+    this._readySubs = new Map() // player -> pending "play once loaded" subscription
   }
 
   init(onPlaying) {
@@ -34,6 +35,7 @@ export class AudioEngine {
   dispose() {
     if (!this.players) return
     for (const k of ['a', 'b']) {
+      this._cancelReady(this.players[k])
       this._clearFade(this.players[k])
       try {
         this.players[k].remove()
@@ -111,6 +113,52 @@ export class AudioEngine {
       player.pause()
     } catch {}
   }
+  _safe(fn) {
+    try {
+      fn()
+    } catch {}
+  }
+
+  // Cancel a pending "play once loaded" wait (e.g. we switched away before it loaded).
+  _cancelReady(player) {
+    const sub = this._readySubs.get(player)
+    if (sub) {
+      this._safe(() => sub.remove())
+      this._readySubs.delete(player)
+    }
+  }
+
+  // Play + fade a player, but ONLY once its source is loaded. expo-audio does not
+  // reliably start a play() issued before a remote clip has buffered — that was the
+  // "long-press expands but no audio; playing it again works" bug. If it isn't loaded
+  // yet, we play on the first playbackStatusUpdate that reports isLoaded.
+  _startWhenReady(player, fadeMs) {
+    if (!player) return
+    this._cancelReady(player)
+    const start = () => {
+      this._safe(() => player.play())
+      this._fade(player, 1, fadeMs)
+    }
+    let loaded = false
+    this._safe(() => {
+      loaded = player.isLoaded === true
+    })
+    if (loaded) {
+      start()
+      return
+    }
+    this._safe(() => player.play()) // best-effort: also nudges buffering to begin
+    let sub = null
+    this._safe(() => {
+      sub = player.addListener('playbackStatusUpdate', (status) => {
+        if (status && status.isLoaded) {
+          this._cancelReady(player)
+          start()
+        }
+      })
+    })
+    if (sub) this._readySubs.set(player, sub)
+  }
 
   // Preload idx into the IDLE player (loaded, paused, silent) so a later play()
   // is instant instead of silent-until-buffered. Called as you browse/hover, and
@@ -140,28 +188,24 @@ export class AudioEngine {
       return
     }
     if (idx === this.currentIdx) {
-      // same track — restart from the top and rise back up
+      // same track — restart from the top and rise back up (once loaded)
       const p = this._active()
-      try {
-        p.seekTo(0)
-        p.play()
-      } catch {}
-      this._fade(p, 1, fadeMs)
+      this._safe(() => (p.volume = 0))
+      this._safe(() => p.seekTo(0))
+      this._startWhenReady(p, fadeMs)
       return
     }
     const incoming = this._idle()
     const outgoing = this._active()
     const prev = this.currentIdx
-    try {
-      if (this._preparedIdx !== idx) {
-        incoming.replace(url) // not preloaded → load now (may lag on first sound)
-        incoming.loop = true
-      }
-      incoming.seekTo(0)
-      incoming.volume = 0
-      incoming.play()
-    } catch {}
-    this._fade(incoming, 1, fadeMs)
+    if (this._preparedIdx !== idx) {
+      this._safe(() => incoming.replace(url)) // not preloaded → load now (may lag on first sound)
+      this._safe(() => (incoming.loop = true))
+    }
+    this._safe(() => (incoming.volume = 0))
+    this._safe(() => incoming.seekTo(0))
+    this._cancelReady(outgoing) // a superseded pending play must not sound later
+    this._startWhenReady(incoming, fadeMs) // plays now if loaded, else the moment it loads
     this._fade(outgoing, 0, FADE_OUT)
     this.activeKey = this.activeKey === 'a' ? 'b' : 'a'
     this.currentIdx = idx
@@ -178,6 +222,7 @@ export class AudioEngine {
     // fade out + pause (play button off, lift/zoom-out, or entering the grid).
     // Keeps currentIdx so a later play() can restart the same clip.
     this._setPlaying(false)
+    this._cancelReady(this._active()) // drop any pending "play once loaded" so lift stays silent
     this._fade(this._active(), 0, FADE_OUT)
   }
   toggle(idx) {

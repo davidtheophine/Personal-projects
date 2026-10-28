@@ -29,9 +29,11 @@ const BOARD_ROWS = 7
 const GC = GENRE_POINTS.length
 const FALLBACK = '#3d5a80'
 const LINGER = 70 // px tile size while lingering
-// zoom in/out spring — smooth + near-critically-damped (replaces an abrupt 190ms timing)
-const ZOOM_SPRING = { mass: 1, stiffness: 200, damping: 26 }
+// zoom in/out spring — snappy but smooth (ζ≈0.81, ω₀≈18 → settles ~250ms, negligible
+// overshoot). Stiffer than before so the zoom doesn't feel sluggish.
+const ZOOM_SPRING = { mass: 1, stiffness: 340, damping: 30 }
 const SWITCH_MS = 120 // brief settle before follow-switching audio to a new tile while zoomed
+const PREPARE_MS = 140 // settle before preloading the hovered cover (avoids replace()-thrash)
 const MAXDIST = 260 // radial-reveal normalizer
 const VIGN_DMAX = Math.sqrt((W / 2) * (W / 2) + (H / 2) * (H / 2)) // centre→corner (~185)
 
@@ -131,6 +133,9 @@ export default function AlbumGrid({ genre, onPickGenre, pitch, magnify, vignette
   const panY = useSharedValue(p0.y)
   const acx = useSharedValue(W / 2)
   const acy = useSharedValue(H / 2)
+  const zStartX = useSharedValue(0) // finger pos at zoom-in — gates edge-pan while zoomed
+  const zStartY = useSharedValue(0)
+  const zMoved = useSharedValue(0) // latches once the finger deliberately moves after a zoom
   const active = useSharedValue(false)
   const zoomed = useSharedValue(0)
   const basePitch = useSharedValue(pitch.value)
@@ -139,6 +144,7 @@ export default function AlbumGrid({ genre, onPickGenre, pitch, magnify, vignette
   const latestIdx = useRef(Math.max(0, GENRE_POINTS.indexOf(genre))) // committed cell (JS)
   const zoomedJS = useRef(false) // JS mirror of the zoom state (gates follow-audio)
   const switchTimer = useRef(null) // debounce for follow-switching audio while zoomed
+  const prepareTimer = useRef(null) // debounce for preloading the hovered cover
   const pickedIdx = useRef(null) // last tile zoomed this session (null = never zoomed)
 
   // radial reveal — only on the first open of the session
@@ -157,6 +163,7 @@ export default function AlbumGrid({ genre, onPickGenre, pitch, magnify, vignette
     audio.enterGrid(latestIdx.current)
     return () => {
       clearTimeout(switchTimer.current)
+      clearTimeout(prepareTimer.current)
       if (pickedIdx.current != null) {
         onPickGenre(GENRE_POINTS[pickedIdx.current])
         audio.play(pickedIdx.current)
@@ -182,7 +189,11 @@ export default function AlbumGrid({ genre, onPickGenre, pitch, magnify, vignette
     latestIdx.current = idx
     onPickGenre(GENRE_POINTS[idx])
     Haptics.selectionAsync()
-    audio.prepare(idx) // preload the hovered cover so the next play is instant
+    // Preload after a brief SETTLE, not on every cell. Preloading on every crossed
+    // cell fired back-to-back replace() calls that thrashed the idle player's loader,
+    // leaving the next long-press unable to load/play. Debounce = one preload per pause.
+    clearTimeout(prepareTimer.current)
+    prepareTimer.current = setTimeout(() => audio.prepare(latestIdx.current), PREPARE_MS)
     if (zoomedJS.current) {
       // zoomed = play state → follow the finger: settle briefly so the clip loads,
       // then crossfade to it (avoids the buffering glitch on an instant switch).
@@ -195,6 +206,8 @@ export default function AlbumGrid({ genre, onPickGenre, pitch, magnify, vignette
   }
   const selectAt = (x, y) => {
     'worklet'
+    // while zooming in, the board is still animating to centre — hold the pick until it settles
+    if (zoomed.value === 1 && Math.abs(pitch.value - LINGER) > 2) return
     const P = pitch.value
     const bc = ((Math.floor((x + panX.value) / P) % BOARD_COLS) + BOARD_COLS) % BOARD_COLS
     const br = ((Math.floor((y + panY.value) / P) % BOARD_ROWS) + BOARD_ROWS) % BOARD_ROWS
@@ -206,12 +219,21 @@ export default function AlbumGrid({ genre, onPickGenre, pitch, magnify, vignette
   }
   const set = (e) => {
     'worklet'
+    // lens follows the finger absolutely (zoomed or not) so you can move around the
+    // grid while zoomed and the audio follows the tile under your finger.
     acx.value = Math.min(W, Math.max(0, e.x))
     acy.value = Math.min(H, Math.max(0, e.y))
+    // once the finger deliberately moves after a zoom, unlock edge-pan (frame cb below)
+    if (zoomed.value === 1 && (Math.abs(acx.value - zStartX.value) > 18 || Math.abs(acy.value - zStartY.value) > 18)) {
+      zMoved.value = 1
+    }
   }
 
   useFrameCallback((f) => {
     if (!active.value) return
+    // while zoomed, only edge-pan once the zoom has SETTLED and the finger has MOVED —
+    // so a fresh (esp. corner) zoom holds its anchor tile instead of auto-panning it away.
+    if (zoomed.value === 1 && (Math.abs(pitch.value - LINGER) > 2 || zMoved.value === 0)) return
     const dt = Math.min(0.05, (f.timeSincePreviousFrame ?? 16) / 1000)
     const speed = 300
     const m = 38
@@ -274,10 +296,16 @@ export default function AlbumGrid({ genre, onPickGenre, pitch, magnify, vignette
       const p = pitch.value
       basePitch.value = p
       zoomed.value = 1
+      zStartX.value = acx.value // anchor the edge-pan gate to the finger's zoom-in point
+      zStartY.value = acy.value
+      zMoved.value = 0
+      // zoom AROUND the finger: the tile under it is the scale anchor and stays put
+      // in the same spot while the whole grid grows around it (no slide to centre).
+      // (Edge-scroll is off while zoomed so an edge tile can't slip to a neighbour.)
       panX.value = withSpring(((acx.value + panX.value) * LINGER) / p - acx.value, ZOOM_SPRING)
       panY.value = withSpring(((acy.value + panY.value) * LINGER) / p - acy.value, ZOOM_SPRING)
       pitch.value = withSpring(LINGER, ZOOM_SPRING)
-      runOnJS(onZoomIn)() // zoom-in → play the selected cover (fade in)
+      runOnJS(onZoomIn)() // zoom-in → play the tile under the finger (fade in)
     })
 
   const gesture = Gesture.Simultaneous(pan, linger, tap)
