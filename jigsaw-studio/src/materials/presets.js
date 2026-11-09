@@ -30,7 +30,7 @@ export const PRESETS = {
       sheen: 0.25,
       sheenRoughness: 0.9,
       sheenColor: new Color('#fff3df'),
-      envMapIntensity: 0.55,
+      envMapIntensity: 0.4,
       clearcoat: 0,
     },
     controls: [control('uPaperFibre', 'Fibre', 0, 2, 0.8), control('uPaperWear', 'Edge wear', 0, 1, 0.35)],
@@ -60,10 +60,12 @@ export const PRESETS = {
     material: {
       roughness: 0.5,
       metalness: 0,
-      clearcoat: 0.35,
-      clearcoatRoughness: 0.35,
+      // satin varnish, not a gloss coat - a bright key panel reflecting off
+      // the whole lid would wash the stain straight out
+      clearcoat: 0.16,
+      clearcoatRoughness: 0.45,
       sheen: 0,
-      envMapIntensity: 0.8,
+      envMapIntensity: 0.5,
     },
     controls: [
       control('uWoodGrain', 'Grain', 0.2, 4, 1.1),
