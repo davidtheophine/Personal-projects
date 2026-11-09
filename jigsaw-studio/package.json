@@ -1,0 +1,25 @@
+{
+  "name": "jigsaw-studio",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Turn any image into a 3D jigsaw puzzle whose pieces can be cut from wood, jelly, gummy, metal or glass",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "paintings": "node scripts/fetch-paintings.mjs"
+  },
+  "dependencies": {
+    "@react-three/drei": "10.7.7",
+    "@react-three/fiber": "9.0.4",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "three": "0.185.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "4.4.1",
+    "puppeteer-core": "^25.4.0",
+    "vite": "6.0.7"
+  }
+}
