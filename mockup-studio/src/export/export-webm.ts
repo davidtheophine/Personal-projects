@@ -1,9 +1,14 @@
 import type { Project } from "@/state/project";
 import { aspectDims } from "@/state/project";
 import { clipLen, totalDuration } from "@/state/clips";
-import { renderFrame } from "@/render/render-frame";
+import { renderBackgroundLayer, renderFrame } from "@/render/render-frame";
 import { seekVideo } from "@/lib/media";
 import { clamp } from "@/render/geometry";
+
+/** A seek that hasn't completed in this long is treated as failed. */
+const SEEK_TIMEOUT_MS = 10_000;
+/** Playback that hasn't advanced in this long (tab visible) is treated as stalled. */
+const STALL_MS = 10_000;
 
 function pickMime(): string {
   // Prefer MP4 (H.264/AAC) where the browser's MediaRecorder supports it
@@ -41,7 +46,7 @@ function loadEl(url: string, muted: boolean): Promise<HTMLVideoElement> {
  * clip's audio) with MediaRecorder. Real-time: takes as long as the output
  * plays. Modern Chrome emits MP4; other browsers fall back to WebM.
  */
-export async function exportVideo(
+export async function exportVideoRealtime(
   project: Project,
   bgImage: HTMLImageElement | null,
   muted: boolean,
@@ -58,6 +63,8 @@ export async function exportVideo(
   canvas.height = H;
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Canvas 2D is unavailable in this browser.");
+  // The background is static: render it once, blit it per frame.
+  const res = { bg: { image: bgImage }, bgLayer: renderBackgroundLayer(project, { image: bgImage }) };
 
   const fps = 30;
   const stream = canvas.captureStream(fps);
@@ -121,7 +128,7 @@ export async function exportVideo(
           t += (now - last) / 1000;
           last = now;
           const at = Math.min(t, to);
-          renderFrame(ctx, project, null, at, { bg: { image: bgImage } });
+          renderFrame(ctx, project, null, at, res);
           onProgress?.(clamp(at / total, 0, 1));
           if (t >= to) {
             cancelAnimationFrame(raf);
@@ -143,11 +150,22 @@ export async function exportVideo(
       if (signal?.aborted) throw cancelled();
       if (clip.start > cursor + 0.02) await renderBlack(cursor, clip.start);
       const spd = clip.speed || 1;
-      await seekVideo(el, clip.in);
+      await seekVideo(el, clip.in, SEEK_TIMEOUT_MS);
       el.playbackRate = spd;
-      await el.play().catch(() => {});
+      try {
+        await el.play();
+      } catch {
+        // Swallowing this used to leave the export spinning at the same % forever.
+        if (signal?.aborted) throw cancelled();
+        throw new Error(
+          "The browser blocked video playback, which this export mode needs. Click Export again and keep this tab in front.",
+        );
+      }
       await new Promise<void>((resolve, reject) => {
         let raf = 0;
+        let lastT = el.currentTime;
+        let lastMove = performance.now();
+        let lastStep = lastMove;
         const step = () => {
           if (signal?.aborted) {
             el.pause();
@@ -156,8 +174,20 @@ export async function exportVideo(
             return;
           }
           try {
+            const now = performance.now();
+            if (now - lastStep > 1000) lastMove = now; // back from a hidden tab — not a stall
+            lastStep = now;
+            if (el.currentTime !== lastT) {
+              lastT = el.currentTime;
+              lastMove = now;
+            } else if (now - lastMove > STALL_MS) {
+              el.pause();
+              cancelAnimationFrame(raf);
+              reject(new Error("Video playback stalled during export."));
+              return;
+            }
             const gt = clip.start + (el.currentTime - clip.in) / spd;
-            renderFrame(ctx, project, el, gt, { bg: { image: bgImage } });
+            renderFrame(ctx, project, el, gt, res);
             onProgress?.(clamp(gt / total, 0, 1));
             if (el.currentTime >= clip.out - 0.001 || el.ended) {
               el.pause();
@@ -201,5 +231,6 @@ export function downloadBlob(blob: Blob, baseName: string): void {
   document.body.appendChild(a);
   a.click();
   a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 2000);
+  // Generous: revoking too early can cut off a large download (Safari/Firefox).
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }

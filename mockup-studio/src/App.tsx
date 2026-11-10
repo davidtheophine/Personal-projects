@@ -24,7 +24,7 @@ import { clamp } from "@/render/geometry";
 import { ensurePhone3D } from "@/render/device-3d";
 import { makeId } from "@/lib/id";
 import { extractThumbnails, loadImageFile, loadVideoFile, loadVideoUrl } from "@/lib/media";
-import { downloadBlob, exportVideo } from "@/export/export-webm";
+import { downloadBlob, exportVideo } from "@/export/export";
 import {
   clearPersisted,
   loadBgBlob,

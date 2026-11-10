@@ -64,10 +64,19 @@ export function loadImageFile(
   });
 }
 
-/** Seek a video and resolve once the frame at `t` is ready. */
-export function seekVideo(el: HTMLVideoElement, t: number): Promise<void> {
-  return new Promise((resolve) => {
+/**
+ * Seek a video and resolve once the frame at `t` is ready. Rejects if the seek
+ * hasn't completed within `timeoutMs`, so a decoder that never answers can't
+ * hang the caller forever.
+ */
+export function seekVideo(el: HTMLVideoElement, t: number, timeoutMs = 10_000): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      el.removeEventListener("seeked", onSeeked);
+      reject(new Error(`Seeking the video to ${t.toFixed(2)} s timed out.`));
+    }, timeoutMs);
     const onSeeked = () => {
+      clearTimeout(timer);
       el.removeEventListener("seeked", onSeeked);
       resolve();
     };
