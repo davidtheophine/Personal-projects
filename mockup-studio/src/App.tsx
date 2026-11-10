@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Download, RotateCcw, X } from "lucide-react";
+import { RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DEFAULT_ROTATE,
@@ -45,6 +45,7 @@ import { ZoomInspector } from "@/editor/panels/ZoomInspector";
 import { RotateInspector } from "@/editor/panels/RotateInspector";
 import { TapInspector } from "@/editor/panels/TapInspector";
 import { ClipInspector } from "@/editor/panels/ClipInspector";
+import { ExportControls, type ExportJob } from "@/editor/ExportControls";
 
 export function App() {
   const [project, setProject] = useState<Project>(defaultProject);
@@ -60,7 +61,6 @@ export function App() {
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
   const [selectedTapId, setSelectedTapId] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
-  const [exportPct, setExportPct] = useState(0);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [model3DReady, setModel3DReady] = useState(false);
 
@@ -71,7 +71,6 @@ export function App() {
   videoElsRef.current = videoEls;
   const mutedRef = useRef(muted);
   mutedRef.current = muted;
-  const exportAbortRef = useRef<AbortController | null>(null);
   const hydratedRef = useRef(false);
 
   // Undo history (project snapshots, coalesced so a slider drag = one step).
@@ -276,30 +275,16 @@ export function App() {
     }));
   }, []);
 
-  const doExport = async () => {
-    if (project.clips.length === 0 || exporting) return;
+  // The export work; ExportControls owns the progress label, Cancel and errors.
+  const exportJob: ExportJob = async ({ progress, mode }, signal) => {
     setPlaying(false);
-    const controller = new AbortController();
-    exportAbortRef.current = controller;
-    setExporting(true);
-    setExportPct(0);
-    try {
-      // Make sure the 3D model is loaded before exporting, or 3D segments would
-      // render as the 2D fallback in the output.
-      if (project.rotates.some((r) => r.is3D)) await ensurePhone3D();
-      const blob = await exportVideo(project, bgImage, muted, (p) => setExportPct(p), controller.signal);
-      const base = (project.clips[0]?.name ?? "mockup").replace(/\.[^.]+$/, "");
-      downloadBlob(blob, `${base}-mockup`);
-    } catch (e) {
-      // Cancelling is expected; let anything else propagate to Sentry.
-      if (!(e instanceof DOMException && e.name === "AbortError")) throw e;
-    } finally {
-      setExporting(false);
-      setExportPct(0);
-      exportAbortRef.current = null;
-    }
+    // Make sure the 3D model is loaded before exporting, or 3D segments would
+    // render as the 2D fallback in the output.
+    if (project.rotates.some((r) => r.is3D)) await ensurePhone3D();
+    const blob = await exportVideo(project, bgImage, muted, progress, signal, mode);
+    const base = (project.clips[0]?.name ?? "mockup").replace(/\.[^.]+$/, "");
+    downloadBlob(blob, `${base}-mockup`);
   };
-  const cancelExport = () => exportAbortRef.current?.abort();
 
   const togglePlay = useCallback(() => {
     if (clipsRef.current.length === 0) return;
@@ -672,20 +657,7 @@ export function App() {
               <RotateCcw className="h-4 w-4" /> Start over
             </Button>
           )}
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled={project.clips.length === 0 || exporting}
-            onClick={doExport}
-          >
-            <Download className="h-4 w-4" />
-            {exporting ? `Exporting ${Math.round(exportPct * 100)}%` : "Export"}
-          </Button>
-          {exporting && (
-            <Button variant="ghost" size="icon" onClick={cancelExport} title="Cancel export">
-              <X className="h-4 w-4" />
-            </Button>
-          )}
+          <ExportControls disabled={project.clips.length === 0} job={exportJob} onBusyChange={setExporting} />
         </div>
       </header>
 
