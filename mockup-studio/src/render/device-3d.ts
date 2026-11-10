@@ -4,6 +4,7 @@ import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import type { TapEvent } from "@/state/project";
 import { drawTaps } from "./taps";
+import { frameSize, type FrameSource } from "./frame-source";
 
 // A real, photoreal iPhone rendered with three.js to an offscreen canvas, which
 // the 2D compositor draws into the scene. Only used when a Rotate segment has 3D
@@ -218,7 +219,7 @@ export function ensurePhone3D(): Promise<void> {
 }
 
 interface Phone3DParams {
-  video: HTMLVideoElement | null;
+  video: FrameSource | null;
   taps: TapEvent[];
   t: number;
   color: string;
@@ -247,8 +248,9 @@ export function renderPhone3D(p: Phone3DParams): HTMLCanvasElement | null {
   c.clearRect(0, 0, sc.width, sc.height);
   c.fillStyle = "#111114";
   c.fillRect(0, 0, sc.width, sc.height);
-  if (p.video && p.video.videoWidth > 0) {
-    const vr = p.video.videoWidth / p.video.videoHeight;
+  const vs = p.video ? frameSize(p.video) : null;
+  if (p.video && vs && vs.w > 0 && vs.h > 0) {
+    const vr = vs.w / vs.h;
     const sr = sc.width / sc.height;
     let dw = sc.width;
     let dh = sc.height;

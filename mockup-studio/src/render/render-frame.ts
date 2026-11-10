@@ -13,9 +13,31 @@ import { sampleZoom, type ZoomSample } from "./zoom";
 import { sampleRotate } from "./rotate";
 import { FRAME_FRACTION, renderPhone3D } from "./device-3d";
 import type { Rect } from "./geometry";
+import type { FrameSource } from "./frame-source";
 
 export interface RenderResources {
   bg: BgResources;
+  /**
+   * The background pre-rendered at canvas size (see renderBackgroundLayer).
+   * Exporters pass it so the static, possibly filter/blur-heavy background is
+   * computed once per export instead of once per frame.
+   */
+  bgLayer?: CanvasImageSource | null;
+}
+
+/**
+ * Render the project's background once at export resolution. It never depends
+ * on time or zoom, so exporters blit this layer for every frame.
+ */
+export function renderBackgroundLayer(project: Project, bg: BgResources): HTMLCanvasElement | null {
+  const { width: W, height: H } = aspectDims(project.aspect);
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  drawBackground(ctx, project.background, W, H, bg);
+  return canvas;
 }
 
 /** Fraction of the canvas left as breathing room around the device. */
@@ -97,7 +119,7 @@ function applyZoomFocus(
 export function renderFrame(
   ctx: CanvasRenderingContext2D,
   project: Project,
-  video: HTMLVideoElement | null,
+  video: FrameSource | null,
   t: number,
   res: RenderResources,
 ): void {
@@ -110,7 +132,8 @@ export function renderFrame(
   const rot = sampleRotate(project.rotates, t);
 
   // Background stays completely stationary — the zoom only affects the phone/video.
-  drawBackground(ctx, project.background, W, H, res.bg);
+  if (res.bgLayer) ctx.drawImage(res.bgLayer, 0, 0, W, H);
+  else drawBackground(ctx, project.background, W, H, res.bg);
 
   // Zoom INTO a focal point on the phone/video (background untouched); zoom.x/y
   // is the focal point as a fraction from the centre, so e.g. "top" enlarges +
