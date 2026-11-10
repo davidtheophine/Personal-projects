@@ -66,16 +66,24 @@ export async function exportVideo(
   // their audio through Web Audio can't hijack live playback.
   const els = await Promise.all(clips.map((c) => loadEl(c.url, muted)));
 
-  // Carry audio through, unless muted. One persistent destination track fed by
-  // whichever clip is currently playing (others emit silence).
+  // Carry audio through, unless muted. Route EVERY element into the recording
+  // graph (not gated on the sometimes-wrong `hasAudio` probe): capturing an
+  // element via Web Audio removes it from the speakers, so nothing plays out
+  // loud during export. A clip with no audio just contributes silence.
   let audioCtx: AudioContext | null = null;
-  if (!muted && clips.some((c) => c.hasAudio)) {
+  if (!muted) {
     audioCtx = new AudioContext();
     await audioCtx.resume().catch(() => {});
     const dest = audioCtx.createMediaStreamDestination();
     const track = dest.stream.getAudioTracks()[0];
     if (track) stream.addTrack(track);
-    for (const el of els) audioCtx.createMediaElementSource(el).connect(dest);
+    for (const el of els) {
+      try {
+        audioCtx.createMediaElementSource(el).connect(dest);
+      } catch {
+        el.muted = true; // couldn't capture it → hard-mute so it can't play aloud
+      }
+    }
   }
 
   const mime = pickMime();
@@ -84,8 +92,9 @@ export async function exportVideo(
   recorder.ondataavailable = (e) => {
     if (e.data.size) chunks.push(e.data);
   };
-  const done = new Promise<Blob>((resolve) => {
+  const done = new Promise<Blob>((resolve, reject) => {
     recorder.onstop = () => resolve(new Blob(chunks, { type: mime }));
+    recorder.onerror = () => reject(new Error("The recorder failed while exporting."));
   });
 
   const total = Math.max(0.001, totalDuration(clips));
@@ -107,18 +116,23 @@ export async function exportVideo(
           reject(cancelled());
           return;
         }
-        const now = performance.now();
-        t += (now - last) / 1000;
-        last = now;
-        const at = Math.min(t, to);
-        renderFrame(ctx, project, null, at, { bg: { image: bgImage } });
-        onProgress?.(clamp(at / total, 0, 1));
-        if (t >= to) {
+        try {
+          const now = performance.now();
+          t += (now - last) / 1000;
+          last = now;
+          const at = Math.min(t, to);
+          renderFrame(ctx, project, null, at, { bg: { image: bgImage } });
+          onProgress?.(clamp(at / total, 0, 1));
+          if (t >= to) {
+            cancelAnimationFrame(raf);
+            resolve();
+            return;
+          }
+          raf = requestAnimationFrame(step);
+        } catch (err) {
           cancelAnimationFrame(raf);
-          resolve();
-          return;
+          reject(err);
         }
-        raf = requestAnimationFrame(step);
       };
       raf = requestAnimationFrame(step);
     });
@@ -141,24 +155,34 @@ export async function exportVideo(
             reject(cancelled());
             return;
           }
-          const gt = clip.start + (el.currentTime - clip.in) / spd;
-          renderFrame(ctx, project, el, gt, { bg: { image: bgImage } });
-          onProgress?.(clamp(gt / total, 0, 1));
-          if (el.currentTime >= clip.out - 0.001 || el.ended) {
+          try {
+            const gt = clip.start + (el.currentTime - clip.in) / spd;
+            renderFrame(ctx, project, el, gt, { bg: { image: bgImage } });
+            onProgress?.(clamp(gt / total, 0, 1));
+            if (el.currentTime >= clip.out - 0.001 || el.ended) {
+              el.pause();
+              cancelAnimationFrame(raf);
+              resolve();
+              return;
+            }
+            raf = requestAnimationFrame(step);
+          } catch (err) {
             el.pause();
             cancelAnimationFrame(raf);
-            resolve();
-            return;
+            reject(err);
           }
-          raf = requestAnimationFrame(step);
         };
         raf = requestAnimationFrame(step);
       });
       cursor = clip.start + clipLen(clip);
     }
     recorder.stop();
+    // Wait for the recorder to FULLY finalise before tearing down the audio
+    // graph. Closing the AudioContext first ends the audio track mid-finalise,
+    // which corrupts/errors the tail of the file (the "~96% then error").
+    const blob = await done;
     if (audioCtx) await audioCtx.close().catch(() => {});
-    return await done;
+    return blob;
   } catch (e) {
     // Cancelled or errored — tear everything down and don't hand back a blob.
     els.forEach((el) => el.pause());

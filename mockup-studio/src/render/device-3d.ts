@@ -15,7 +15,12 @@ const MODEL_URL = import.meta.env.BASE_URL + "models/iphone.glb";
 const DRACO_PATH = import.meta.env.BASE_URL + "draco/";
 const SCREEN_MESH_NAME = "xXDHkMplTIDAXLN";
 
-const RENDER_SIZE = 2048; // offscreen resolution — high, so tilt/zoom stays sharp
+// Offscreen resolution. Every 3D frame is read back to the 2D compositor via
+// drawImage (a synchronous GPU ReadPixels), so this is also the per-frame
+// readback size during export — keep it high enough for sharp tilt but not so
+// high the readback stalls realtime capture. 1600² keeps text crisp (mipmaps +
+// anisotropy do the real work) at ~40% less readback than 2048².
+const RENDER_SIZE = 1600;
 const TARGET_H = 2.0; // model is normalised to this height in world units
 const FOV = 22;
 /** Phone height as a fraction of the render canvas at rest — leaves tilt headroom. */
@@ -37,6 +42,7 @@ interface Kit {
 }
 let kit: Kit | null = null;
 let failed = false; // WebGL unavailable
+let contextLost = false; // GPU context dropped mid-session → fall back to 2D
 let modelRoot: THREE.Object3D | null = null;
 let loadPromise: Promise<void> | null = null;
 
@@ -88,6 +94,12 @@ function init(): Kit | null {
     const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, preserveDrawingBuffer: true });
     renderer.setPixelRatio(1);
     renderer.setSize(RENDER_SIZE, RENDER_SIZE, false);
+    // If the GPU drops the context under load, stop trying to render 3D (the 2D
+    // phone takes over) rather than throwing on every subsequent frame.
+    renderer.domElement.addEventListener("webglcontextlost", (e) => {
+      e.preventDefault();
+      contextLost = true;
+    });
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.1;
@@ -221,6 +233,7 @@ interface Phone3DParams {
  * the lazy load on first call.
  */
 export function renderPhone3D(p: Phone3DParams): HTMLCanvasElement | null {
+  if (contextLost) return null;
   const k = init();
   if (!k) return null;
   if (!modelRoot) {
@@ -255,6 +268,12 @@ export function renderPhone3D(p: Phone3DParams): HTMLCanvasElement | null {
     (p.rotateY * Math.PI) / 180,
     (p.roll * Math.PI) / 180,
   );
-  k.renderer.render(k.scene, k.camera);
+  try {
+    k.renderer.render(k.scene, k.camera);
+  } catch {
+    // A GL failure mid-export must not crash the whole render — drop to 2D.
+    contextLost = true;
+    return null;
+  }
   return k.renderer.domElement;
 }
