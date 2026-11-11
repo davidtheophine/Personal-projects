@@ -15,6 +15,7 @@
     "clsx": "^2.1.1",
     "dialkit": "^1.4.3",
     "lucide-react": "^0.577.0",
+    "mediabunny": "^1.65.2",
     "motion": "^11.18.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

@@ -1,6 +1,7 @@
 import type { DeviceState, ShadowState } from "@/state/project";
 import { shade, withAlpha } from "@/lib/color";
 import { fitRect, insetRect, roundedRectPath, type Rect } from "./geometry";
+import { frameSize, type FrameSource } from "./frame-source";
 
 // Frame proportions, expressed as fractions of the device BODY width.
 // Body is 1072 × 2242 in reference units.
@@ -106,7 +107,7 @@ export function drawDeviceShadow(
 export function drawBareVideo(
   ctx: CanvasRenderingContext2D,
   rect: Rect,
-  video: HTMLVideoElement | null,
+  video: FrameSource | null,
   shadow: ShadowState,
 ): void {
   const radius = rect.w * 0.045;
@@ -124,8 +125,9 @@ export function drawBareVideo(
   ctx.save();
   roundedRectPath(ctx, rect, radius);
   ctx.clip();
-  if (video && video.videoWidth > 0) {
-    const dr = fitRect(video.videoWidth, video.videoHeight, rect, "cover");
+  const vs = video ? frameSize(video) : null;
+  if (video && vs && vs.w > 0 && vs.h > 0) {
+    const dr = fitRect(vs.w, vs.h, rect, "cover");
     try {
       ctx.drawImage(video, dr.x, dr.y, dr.w, dr.h);
     } catch {
@@ -148,7 +150,7 @@ export function drawDevice(
   ctx: CanvasRenderingContext2D,
   body: Rect,
   device: DeviceState,
-  video: HTMLVideoElement | null,
+  video: FrameSource | null,
 ): void {
   const u = body.w;
   const geo = deviceGeometry(body);
@@ -187,8 +189,9 @@ export function drawDevice(
   ctx.save();
   roundedRectPath(ctx, geo.screen, geo.screenRadius);
   ctx.clip();
-  if (video && video.videoWidth > 0) {
-    const dr = fitRect(video.videoWidth, video.videoHeight, geo.screen, "cover");
+  const vs = video ? frameSize(video) : null;
+  if (video && vs && vs.w > 0 && vs.h > 0) {
+    const dr = fitRect(vs.w, vs.h, geo.screen, "cover");
     try {
       ctx.drawImage(video, dr.x, dr.y, dr.w, dr.h);
     } catch {
