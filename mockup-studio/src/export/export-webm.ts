@@ -3,6 +3,7 @@ import { aspectDims } from "@/state/project";
 import { clipLen, totalDuration } from "@/state/clips";
 import { renderBackgroundLayer, renderFrame } from "@/render/render-frame";
 import { seekVideo } from "@/lib/media";
+import { bounded } from "@/lib/bounded";
 import { clamp } from "@/render/geometry";
 
 /** A seek that hasn't completed in this long is treated as failed. */
@@ -71,7 +72,11 @@ export async function exportVideoRealtime(
 
   // Fresh elements just for export — never the preview's elements, so routing
   // their audio through Web Audio can't hijack live playback.
-  const els = await Promise.all(clips.map((c) => loadEl(c.url, muted)));
+  const els = await bounded(Promise.all(clips.map((c) => loadEl(c.url, muted))), {
+    label: "Loading the clips",
+    ms: 20_000,
+    signal,
+  });
 
   // Carry audio through, unless muted. Route EVERY element into the recording
   // graph (not gated on the sometimes-wrong `hasAudio` probe): capturing an
@@ -80,7 +85,8 @@ export async function exportVideoRealtime(
   let audioCtx: AudioContext | null = null;
   if (!muted) {
     audioCtx = new AudioContext();
-    await audioCtx.resume().catch(() => {});
+    // Can stay pending without a user gesture (Safari): don't let it hang the export.
+    await bounded(audioCtx.resume(), { label: "Starting audio", ms: 5000, signal }).catch(() => {});
     const dest = audioCtx.createMediaStreamDestination();
     const track = dest.stream.getAudioTracks()[0];
     if (track) stream.addTrack(track);

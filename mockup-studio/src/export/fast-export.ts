@@ -7,6 +7,9 @@ import { planFrames } from "./frame-plan";
 import { audioSchedule, type AudioPiece } from "./audio-plan";
 import { timeStretch } from "./time-stretch";
 import { pickOutput } from "./pick-output";
+import { bounded } from "@/lib/bounded";
+import { layoutPiece } from "./audio-layout";
+import { createStallWatchdog } from "./stall-watchdog";
 
 // ---- Export settings (one place) ----
 export const EXPORT_FPS = 30;
@@ -24,10 +27,7 @@ const YIELD_EVERY_MS = 30;
 export class FastExportUnsupported extends Error {
   override name = "FastExportUnsupported";
 }
-/** Decoding/encoding stopped making progress. */
-export class ExportStalled extends Error {
-  override name = "ExportStalled";
-}
+export { ExportStalled } from "./stall-watchdog";
 
 export function fastExportAvailable(): boolean {
   return (
@@ -84,7 +84,8 @@ export async function fastExport(
   signal?: AbortSignal,
 ): Promise<Blob> {
   if (!fastExportAvailable()) throw new FastExportUnsupported("WebCodecs is not available in this browser.");
-  const mb = await import("./mediabunny");
+  // Fetching the exporter chunk is network I/O: bound it (a timeout falls back to real time).
+  const mb = await bounded(import("./mediabunny"), { label: "Loading the exporter", ms: 30_000, signal });
   const clips = project.clips;
   const plan = planFrames(clips, EXPORT_FPS);
   if (plan.count === 0) throw new Error("Add a video before exporting.");
@@ -96,24 +97,15 @@ export async function fastExport(
   };
 
   // Every await below races a stall watchdog and the abort signal, so nothing can hang forever.
-  let lastProgressAt = performance.now();
-  let stallLimit = STALL_MS;
-  let failStall: (e: Error) => void = () => {};
-  const stalled = new Promise<never>((_, reject) => (failStall = reject));
-  stalled.catch(() => {});
-  const watchdog = setInterval(() => {
-    if (performance.now() - lastProgressAt > stallLimit) {
-      failStall(new ExportStalled(`Export stopped making progress for ${Math.round(stallLimit / 1000)} s.`));
-    }
-  }, 1000);
+  const watchdog = createStallWatchdog({ limitMs: STALL_MS });
   let failAbort: (e: Error) => void = () => {};
   const aborted = new Promise<never>((_, reject) => (failAbort = reject));
   aborted.catch(() => {});
   const onAbort = () => failAbort(abortError());
   if (signal?.aborted) onAbort();
   signal?.addEventListener("abort", onAbort, { once: true });
-  const guard = <T>(p: Promise<T>): Promise<T> => Promise.race([p, stalled, aborted]);
-  const tick = () => (lastProgressAt = performance.now());
+  const guard = <T>(p: Promise<T>): Promise<T> => Promise.race([p, watchdog.stalled, aborted]);
+  const tick = () => watchdog.tick();
 
   const inputs = new Map<string, InstanceType<typeof mb.Input>>();
   const iterators = new Map<number, AsyncGenerator<WrappedCanvas | null, void, unknown>>();
@@ -254,7 +246,7 @@ export async function fastExport(
     onProgress?.(0.98);
 
     // ---- Finalise into one file. ----
-    stallLimit = FINALIZE_STALL_MS;
+    watchdog.setLimit(FINALIZE_STALL_MS);
     tick();
     const tf = performance.now();
     await guard(out.finalize());
@@ -266,10 +258,12 @@ export async function fastExport(
     console.info("[export] fast path", JSON.stringify(roundStats(stats)));
     return new Blob([buffer], { type: format.mimeType });
   } catch (e) {
-    if (output && output.state !== "finalized" && output.state !== "canceled") await output.cancel().catch(() => {});
+    if (output && output.state !== "finalized" && output.state !== "canceled") {
+      await bounded(output.cancel(), { label: "Discarding the partial export", ms: 5000 }).catch(() => {});
+    }
     throw e;
   } finally {
-    clearInterval(watchdog);
+    watchdog.stop();
     signal?.removeEventListener("abort", onAbort);
     for (const it of iterators.values()) void it.return(undefined).catch(() => {});
     iterators.clear();
@@ -319,33 +313,28 @@ async function mixAudio(
     } finally {
       void it.return(undefined).catch(() => {});
     }
-    if (chunks.length === 0) continue;
-    const sr = chunks[0].buffer.sampleRate;
-    const first = chunks[0].timestamp;
-    const last = chunks[chunks.length - 1];
-    const span = Math.max(1, Math.round((last.timestamp + last.duration - first) * sr));
-    // Lay the decoded chunks out on one contiguous stereo strip (mono → both sides).
-    const strip = [new Float32Array(span), new Float32Array(span)];
-    for (const wb of chunks) {
-      const at = Math.round((wb.timestamp - first) * sr);
-      if (at >= span) continue;
-      for (let c = 0; c < 2; c++) {
-        const data = wb.buffer.getChannelData(Math.min(c, wb.buffer.numberOfChannels - 1));
-        strip[c].set(data.subarray(0, Math.min(data.length, span - Math.max(0, at))), Math.max(0, at));
-      }
-    }
-    // Trim to exactly the piece's source range, then stretch if needed.
-    const s0 = Math.min(span, Math.max(0, Math.round((piece.srcOffset - first) * sr)));
-    const s1 = Math.min(span, s0 + Math.round(piece.srcDuration * sr));
-    let seg: Float32Array[] = strip.map((ch) => ch.slice(s0, s1));
-    if (Math.abs(piece.speed - 1) > 1e-6) seg = timeStretch(seg, piece.speed, sr);
+    const laid = layoutPiece(
+      chunks.map((wb) => ({
+        timestamp: wb.timestamp,
+        duration: wb.duration,
+        sampleRate: wb.buffer.sampleRate,
+        data: Array.from({ length: wb.buffer.numberOfChannels }, (_, c) => wb.buffer.getChannelData(c)),
+      })),
+      piece,
+    );
+    if (!laid || laid.channels[0].length === 0) continue;
+    // Keep every channel: the 2-channel mix destination down-mixes 5.1 and
+    // up-mixes mono with the standard speaker rules.
+    let seg = laid.channels;
+    if (Math.abs(piece.speed - 1) > 1e-6) seg = timeStretch(seg, piece.speed, laid.sampleRate);
     if (seg[0].length === 0) continue;
-    const buf = new AudioBuffer({ length: seg[0].length, numberOfChannels: 2, sampleRate: sr });
-    for (let c = 0; c < 2; c++) buf.getChannelData(c).set(seg[c]);
+    const buf = new AudioBuffer({ length: seg[0].length, numberOfChannels: seg.length, sampleRate: laid.sampleRate });
+    for (let c = 0; c < seg.length; c++) buf.getChannelData(c).set(seg[c]);
     const node = mix.createBufferSource();
     node.buffer = buf;
     node.connect(mix.destination);
-    node.start(piece.when);
+    // Audio that begins after the clip's in-point starts that much later.
+    node.start(piece.when + laid.lead / piece.speed);
   }
   return guard(mix.startRendering());
 }

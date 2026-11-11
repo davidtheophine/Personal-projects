@@ -23,6 +23,7 @@ import { activeAt, MIN_CLIP, totalDuration } from "@/state/clips";
 import { clamp } from "@/render/geometry";
 import { ensurePhone3D } from "@/render/device-3d";
 import { makeId } from "@/lib/id";
+import { bounded } from "@/lib/bounded";
 import { extractThumbnails, loadImageFile, loadVideoFile, loadVideoUrl } from "@/lib/media";
 import { downloadBlob, exportVideo } from "@/export/export";
 import {
@@ -280,7 +281,9 @@ export function App() {
     setPlaying(false);
     // Make sure the 3D model is loaded before exporting, or 3D segments would
     // render as the 2D fallback in the output.
-    if (project.rotates.some((r) => r.is3D)) await ensurePhone3D();
+    if (project.rotates.some((r) => r.is3D)) {
+      await bounded(ensurePhone3D(), { label: "Loading the 3D iPhone model", ms: 30_000, signal });
+    }
     const blob = await exportVideo(project, bgImage, muted, progress, signal, mode);
     const base = (project.clips[0]?.name ?? "mockup").replace(/\.[^.]+$/, "");
     downloadBlob(blob, `${base}-mockup`);
