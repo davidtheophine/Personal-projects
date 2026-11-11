@@ -84,7 +84,7 @@ export async function fastExport(
   signal?: AbortSignal,
 ): Promise<Blob> {
   if (!fastExportAvailable()) throw new FastExportUnsupported("WebCodecs is not available in this browser.");
-  const mb = await import("mediabunny");
+  const mb = await import("./mediabunny");
   const clips = project.clips;
   const plan = planFrames(clips, EXPORT_FPS);
   if (plan.count === 0) throw new Error("Add a video before exporting.");
@@ -127,7 +127,7 @@ export async function fastExport(
     for (const clip of clips) {
       if (inputs.has(clip.url)) continue;
       const blob = await guard(fetch(clip.url).then((r) => r.blob()));
-      const input = new mb.Input({ source: new mb.BlobSource(blob), formats: mb.ALL_FORMATS });
+      const input = new mb.Input({ source: new mb.BlobSource(blob), formats: mb.INPUT_FORMATS });
       inputs.set(clip.url, input);
       const vt = await guard(input.getPrimaryVideoTrack());
       if (!vt || !(await guard(vt.canDecode()))) {
@@ -288,7 +288,7 @@ function roundStats(s: Stats): Stats {
  * a 48 kHz stereo timeline exactly `seconds` long (= the video's length).
  */
 async function mixAudio(
-  mb: typeof import("mediabunny"),
+  mb: typeof import("./mediabunny"),
   clips: VideoClip[],
   pieces: AudioPiece[],
   tracks: Map<string, InputAudioTrack>,
