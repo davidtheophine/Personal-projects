@@ -17,6 +17,8 @@ const clip = (o: Partial<VideoClip>): VideoClip => ({
   speed: 1,
   ...o,
 });
+// Planned source times carry a deliberate +1 ms boundary nudge, so plain time
+// checks use 2 decimals (±5 ms — still far tighter than a 16.7 ms frame).
 // Which 60 fps source frame a planned source time lands on.
 const srcFrame = (t: number) => Math.floor(t * 60);
 
@@ -25,8 +27,8 @@ describe("planFrames", () => {
     const plan = planFrames([clip({ out: 2 })], 30);
     expect(plan.count).toBe(60);
     expect(plan.frames[0]?.clipIndex).toBe(0);
-    expect(plan.frames[0]?.localTime).toBeCloseTo(0, 3);
-    expect(plan.frames[59]?.localTime).toBeCloseTo(59 / 30, 3);
+    expect(plan.frames[0]?.localTime).toBeCloseTo(0, 2);
+    expect(plan.frames[59]?.localTime).toBeCloseTo(59 / 30, 2);
   });
 
   it("is frame-exact: a trimmed 1× clip shows source frame 2i at output frame i (60→30 fps)", () => {
@@ -38,13 +40,28 @@ describe("planFrames", () => {
     expect(got.every((s, i) => s === 180 + 2 * i)).toBe(true);
   });
 
+  it("stays frame-exact when the container rounds frame times to whole milliseconds (WebM)", () => {
+    // Break caught: WebM stores 60 fps frame times as 0, 17, 33, 50, 67 ms …, so
+    // frame 4 sits at 67 ms, past its exact 66.667 ms. A planned time that is
+    // only nudged 0.1 ms (66.767 ms) still selects frame 3 — every third output
+    // frame shows the wrong source frame (found by the bench on a VP9 recording).
+    const webmTs = Array.from({ length: 1200 }, (_, k) => Math.round((k * 1000) / 60) / 1000);
+    const shown = (t: number) => {
+      let k = 0;
+      while (k + 1 < webmTs.length && webmTs[k + 1] <= t) k++;
+      return k;
+    };
+    const plan = planFrames([clip({ in: 0, out: 20 })], 30);
+    expect(plan.frames.every((f, i) => shown(f!.localTime) === 2 * i)).toBe(true);
+  });
+
   it("advances source time by the speed multiplier", () => {
     const fast = planFrames([clip({ in: 0, out: 4, speed: 2 })], 30);
     expect(fast.count).toBe(60); // 4 s of source at 2× = 2 s of output
-    expect(fast.frames[30]?.localTime).toBeCloseTo(2, 3);
+    expect(fast.frames[30]?.localTime).toBeCloseTo(2, 2);
     const slow = planFrames([clip({ in: 0, out: 1, speed: 0.5 })], 30);
     expect(slow.count).toBe(60); // 1 s of source at 0.5× = 2 s of output
-    expect(slow.frames[30]?.localTime).toBeCloseTo(0.5, 3);
+    expect(slow.frames[30]?.localTime).toBeCloseTo(0.5, 2);
   });
 
   it("leaves gaps between clips empty (null) and resumes on the next clip", () => {
@@ -56,7 +73,7 @@ describe("planFrames", () => {
     expect(plan.frames.slice(0, 30).every((f) => f?.clipIndex === 0)).toBe(true);
     expect(plan.frames.slice(30, 45).every((f) => f === null)).toBe(true);
     expect(plan.frames[45]?.clipIndex).toBe(1);
-    expect(plan.frames[45]?.localTime).toBeCloseTo(5, 3);
+    expect(plan.frames[45]?.localTime).toBeCloseTo(5, 2);
   });
 
   it("gives the boundary frame of two adjacent clips to the second clip", () => {
@@ -66,7 +83,7 @@ describe("planFrames", () => {
     );
     expect(plan.frames[29]?.clipIndex).toBe(0);
     expect(plan.frames[30]?.clipIndex).toBe(1);
-    expect(plan.frames[30]?.localTime).toBeCloseTo(7, 3);
+    expect(plan.frames[30]?.localTime).toBeCloseTo(7, 2);
   });
 
   it("lets the later clip win where clips overlap (same rule as the preview)", () => {

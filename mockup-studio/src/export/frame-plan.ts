@@ -17,11 +17,14 @@ export interface FramePlan {
 }
 
 /**
- * Source times are nudged forward by 0.1 ms so float rounding on an exact
- * source-frame boundary (e.g. 3 + i/30 vs (180 + 2i)/60) can never select the
- * previous frame. That's far below any real frame duration (≥ 4 ms at 240 fps).
+ * Source times are nudged forward by 1 ms so a time that lands exactly on a
+ * source-frame boundary can never select the previous frame — whether from
+ * float rounding (3 + i/30 vs (180 + 2i)/60) or from containers that store
+ * frame times rounded to whole milliseconds (WebM: 66.667 ms is stored as
+ * 67 ms). 1 ms stays below any real frame duration (4.2 ms even at 240 fps),
+ * so it can never reach the next frame.
  */
-const BOUNDARY_NUDGE = 1e-4;
+const BOUNDARY_NUDGE = 1e-3;
 
 /**
  * The fast exporter's script: output frame i sits at exactly t = i / fps and
